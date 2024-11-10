@@ -1,0 +1,15 @@
+This looks like a cool project! I think as written, the scope may be a little low, especially if Shahu joins your team. On that note, unless you've heard from Dhruv when you begin revising your proposal, let's conclude that Shahu will be joining your group and he should be integrated into your planning and included in your roadmap. 
+
+I think area lights and soft shadows are a nice feature, but they're pretty simple to implement. I'm not sure about your approach of represnting them as many point lights - this seems more limited than the approach presented in the book; I'd like to either get your reasoning for this design choice, or consider switching to a rectangle from which you sample light directions. 
+
+The anti-aliasing stuff seems cool; I don't know a ton about AA, but edge-aware AA seems interesting and I'd love to see some comparisons showing how that looks compared to standard AA or no AA at all. For the Object Alias - this seems potentially limited in usefulness if the scene is ever going to be rendered from different viewpoints, since "small and far away" depends on camera positioning. Are there other use cases for this that you had in mind?
+
+As I understand it, the proposal to include different "shading" (actually interpolation) techniques (flat, Gouraud, and Phong) is a little misguided - the raytracer does the equivalent of Phong interpolation out of the box, since we calculate the lighting model at every pixel. Flat shading can be accomplished by simply setting the normals to the triangle face normal. Gouraud shading is strictly worse than Phong, so there's not much motive to implement it here.
+
+Refraction is interesting; having a 2x ray expansion anytime you hit a refractive object may require some care in designing scenes to avoid serious performance issues. 
+
+Your expansion ideas are a good place to look to widen the scope a bit. In particular, the idea of looking into other light interaction models seems promising. I have some resources in the A2 extensions about microfacet models, which attempt to do a better-than-Phong-reflection job at modeling light interactions with real-world matte and specular surfaces.
+
+Another always-nice add-on is to implement a BVH, which would allow you to much more efficiently render large meshes (as mentioned in your MS2 deliverable).
+
+I think it would be a good idea to submit a revised proposal that takes the above feedback into account. Please commit 1113_proposal.pdf (or with whatever datestamp prefix is correct) to this directory by Wednesday night, 11/13, and send me an email to let me know I should go take a look. Feel free to also snag me in/after class on Tuesday and/or Wednesday if you have questions or want to run ideas by me.
