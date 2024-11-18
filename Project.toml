@@ -1,0 +1,15 @@
+name = "Rays"
+uuid = "f7087559-32ef-4570-853a-a3464914a5ae"
+authors = ["Scott Wehrwein <scott.wehrwein@wwu.edu>"]
+version = "0.1.0"
+
+[deps]
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+FileIO = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+Images = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[compat]
+Revise = "3.6.2"
