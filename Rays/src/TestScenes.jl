@@ -1,8 +1,6 @@
 module TestScenes
 
-export artifact_sonnenj
-
-push!(LOAD_PATH, pwd())
+#push!(LOAD_PATH, pwd())
 using ..GfxBase
 using ..Scenes
 using ..Materials
@@ -18,7 +16,6 @@ green = RGB{Float32}(0, 1, 0)
 blue = RGB{Float32}(0, 0, 1)
 white = RGB{Float32}(1, 1, 1)
 purple = RGB{Float32}(1, 0, 1)
-yellow = RGB{Float32}(1, 1, 0)
 
 function camera_1(img_height, img_width)
     CanonicalCamera(img_height, img_width)
@@ -40,21 +37,12 @@ function camera_3(img_height, img_width)
         Vec3(0, 1, 0),   # up::Vec3
         0.3,     # focal::Real
         img_height, # canv_height::Int
-        img_width) # canv_width::Int
+        img_width) # canv_width::Int)
 end
 
-function camera_artifact(img_height, img_width)
 
-    Cameras.PerspectiveCamera(
-        Vec3(-1, 0.8, -1.2),  # eye::Vec3
-        Vec3(1, -1, -1), # view::Vec3
-        Vec3(0, 1, 0),   # up::Vec3
-        0.3,     # focal::Real
-        img_height, # canv_height::Int
-        img_width) # canv_width::Int
-end
 
-cameras = [camera_1, camera_2, camera_3, camera_artifact]
+cameras = [camera_1, camera_2, camera_3]
 
 function get_camera(i, img_height, img_width)
     cameras[i](img_height, img_width)
@@ -160,6 +148,13 @@ function scene_6()
 end
 
 
+#push!(objs, Sphere(Vec3(0, 0, -605), 600, Material(Lambertian(), 0.5, nothing, white)))
+
+#push!(objs, Sphere(Vec3(0, -1, -3), 1, RGB{Float32}(1.0, 0.0, 0.0), 500, 0.2))
+#push!(objs, Sphere(Vec3(2, 0, -4), 1, RGB{Float32}(0.0, 0.0, 1.0), 500, 0.3))
+#push!(objs, Sphere(Vec3(-2, 0, -4), 1, RGB{Float32}(0.0, 1.0, 0.0), 10, 0.4))
+#push!(objs, Sphere(Vec3(0, -5001, 0), 5000, RGB{Float32}(1.0, 1.0, 0.0), 1000, 0.5))
+
 
 """ Take the OBJMesh mesh and return an array of Triangles from the mesh
 with the given material, after scaling the mesh positions by scale and moving
@@ -236,91 +231,13 @@ function scene_10()
     Scene(bg, tri, lights)
 end
 
-function artifact_sonnenj(img_height, img_width)
-	#r: 173, g: 216, b: 230
-    # bg = RGB{Float32}(173, 216, 230) ./ 256
-    # bg = RGB{Float32}(0.95, 0.95, 0.95)
-    bg = black
-
-    face = Material(BlinnPhong(white, 10), 0.0, nothing, yellow)
-    eye = Material(BlinnPhong(green, 100), 0.0, nothing, black)
-    mouth = Material(Lambertian(), 0.0, nothing, black)
-    
-    objs = [
-        # Face
-        Sphere(Vec3(0,0,-6), 1, face)
-        # Eyes
-        Sphere(Vec3(0.325,0.425,-5.0), 0.25, eye)
-        Sphere(Vec3(-0.325,0.425,-5.0), 0.25, eye)
-        # Mouth
-        Sphere(Vec3(0,-0.25, -5), 0.125, mouth)
-        Sphere(Vec3(0.125,-0.2125, -5), 0.125, mouth)
-        Sphere(Vec3(-0.125,-0.2125, -5), 0.125, mouth)
-        Sphere(Vec3(0.25,-0.105, -5), 0.125, mouth)
-        Sphere(Vec3(-0.25,-0.105, -5), 0.125, mouth)
-
-        Sphere(Vec3(0, -5001, 0), 5000, Material(Lambertian(), 0.5, nothing, white)) # floor
-    ]
-    lights = [
-        PointLight(0.4, Vec3(-5,8,-3)),
-        DirectionalLight(0.3, Vec3(0, 0, 1)),
-        DirectionalLight(0.3, Vec3(0, 1, 1)),
-        DirectionalLight(0.3, Vec3(0, 1, 0))
-    ]
-    camera = CanonicalCamera(img_height, img_width)
-    scene = Scene(bg, objs, lights)
-    return scene, camera
-
-    ##################################
-    # TODO 10 - one per group member #
-    ##################################
-end
-
-function artifact_biraris()
-    bg = RGB{Float32}(0, 0.01, 0.05) # Create background color
-
-    # Create materials
-    mat1 = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.0, 0.5, 1.0))
-    mat2 = Material(BlinnPhong(RGB{Float32}(1.0, 0.5, 0.0), 10), 0.0, nothing, RGB{Float32}(1.0, 0.5, 0.0))
-    mat3 = Material(Lambertian(), 0.0, nothing, RGB{Float32}(1.0, 1.0, 1.0))
-
-    # List to store objects used in scene
-    objs = []
-
-    # Place first layer of spheres in a narrow circular formation
-    for angle in range(0, stop=2π, length=100)
-        radius = 1
-        height = 1.125 * sin(5 * angle)
-        push!(objs, Sphere(Vec3(radius * cos(angle), height, -5), 0.05, mat1))
-    end
-
-    # Place second layer of spheres in a less narrow circular formation
-    for angle in range(0, stop=2π, length=50)
-        radius = 2
-        height = 1.15 * sin(10 * angle)
-        push!(objs, Sphere(Vec3(radius * cos(angle), height, -5), 0.1, mat2))
-    end
-
-    # Place third layer of spheres in an oblong circular formation
-    for angle in range(0, stop=2π, length=100)
-        radius = 1.5
-        height = 1.125 * sin(7.5 * angle)
-        push!(objs, Sphere(Vec3(radius * cos(angle), height, -5), 0.15, mat3))
-    end
-
-    # Setup lights
-    lights = [PointLight(0.05, Vec3(-5, -5, -5)), PointLight(0.01, Vec3(5, 5, 5)), DirectionalLight(0.5, Vec3(1, -1, -1)), DirectionalLight(0.25, Vec3(-1, 1, 1))]
-
-    # Return new scene
-    return Scene(bg, objs, lights)
+function artifact_yourwwuname(img_height, img_width)
     ##################################
     # TODO 10 - one per group member #
     ##################################
 end
 
 
-scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7, scene_8, scene_9, artifact_sonnenj]
-
-
+scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7, scene_8, scene_9]
 
 end # module TestScenes

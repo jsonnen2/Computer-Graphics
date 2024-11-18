@@ -80,15 +80,11 @@ function ray_intersect(ray::Ray, object::Sphere)
     intersection = p + t .* d + object.center
     normal = normalize(intersection - object.center)
 
-    if true
-        uv = nothing
-    else
-        # Calculate texture coordinates
-        x, y, z = (intersection .- object.center) ./ object.radius
-        u = (1 / pi) * acos(y)
-        v = atan(z, x)
-        uv = Vec2(u, v)
-    end
+    # Calculate texture coordinates
+    x, y, z = (intersection .- object.center) ./ object.radius
+    u = (1 / pi) * acos(y)
+    v = atan(z, x)
+    uv = Vec2(u, v)
 
     # Return new HitRecord with intersection data
     return HitRecord(t, intersection, normal, uv, object)
@@ -210,6 +206,5 @@ function ray_intersect(ray::Ray, object::Triangle)
     # TODO 9d - modify above to fill in Hitrec's texture coordinates
     ################################################################
 end
-
 
 end # module Scenes

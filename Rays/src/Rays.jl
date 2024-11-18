@@ -238,9 +238,8 @@ end
 function main(scene, camera, height, width, outfile)
 
     # get the requested scene and camera
-    # scene = TestScenes.get_scene(scene)
-    # camera = TestScenes.get_camera(camera, height, width)
-    scene, camera = TestScenes.artifact_biraris(height, width)
+    scene = TestScenes.get_scene(scene)
+    camera = TestScenes.get_camera(camera, height, width)
 
 
     # Create a blank canvas to store the image:
