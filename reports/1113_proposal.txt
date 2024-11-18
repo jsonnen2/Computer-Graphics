@@ -1,0 +1,31 @@
+Project Proposal Resubmission
+Josh
+Edge detection
+As traceray iterates, cache n most recent object ids. Check arr[1] and arr[length] for different object ids.
+Oren-Nayar Diffuse Reflection model
+Another material object
+Example scene comparing this against Lambertian shading (rough texture object)
+https://www.pbr-book.org/3ed-2018/Reflection_Models/Microfacet_Models 
+Jackson
+Area lights. Rectangular object. Sample using 3 different methods: uniform, random, stratified.  Take samples from some number of rectangular subdivisions of the area light to approximate a light of nonzero area.
+Antialiasing– average rays across sub pixels to “fake” a higher quality resolution.
+Shahu
+Refraction– Each object in the scene will have reflection and refraction parameters. At a ray intersection, calculate the reflected ray and the refracted ray. Shoot those rays into the scene using traceray. Remember to set a maximum recursion depth. 
+Bounding volume hierarchy
+
+Milestone 1 Goals
+Josh
+Edge detection
+Jackson
+Area light object. All 3 sampling methods
+Shahu
+Refraction coeff for all scene object
+Written implementation plan for bounding volume hierarchy
+Milestone 2 Goals
+Milestone 2 goals will be revised upon completion of Milestone 1. For now, these are our goals. 
+Josh
+Oren-Nayar Diffuse Reflection model
+Jackson
+Antialiasing, screen-wide and edge dependent
+Shahu
+Bounding volume hierarchy 
