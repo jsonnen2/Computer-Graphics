@@ -229,7 +229,7 @@ end
 # END TODO 5a #
 ##############
 
-function edge_detection(objs, proximity=1)
+function edge_detection(objs, canvas, proximity=1)
 
     height, width = size(objs)
     mask = falses(height, width)
@@ -237,6 +237,7 @@ function edge_detection(objs, proximity=1)
     # Check first pixel seperately
     if (objs[1,1] !== objs[2,1]) || (objs[1,1] !== objs[1,2])
         mask[1,1] = true
+        canvas[i,j] = RGB{Float32}(0,1,0)
     end
 
     # Iterate image to find edges
@@ -245,10 +246,11 @@ function edge_detection(objs, proximity=1)
             if (objs[i,j] !== objs[i-1,j]) || (objs[i,j] !== objs[i,j-1])
 
                 mask[i,j] = true
+                canvas[i,j] = RGB{Float32}(0,1,0)
             end 
         end
     end
-    return mask
+    return mask, canvas
 end
 
 # Main loop:
@@ -284,7 +286,7 @@ function main(scene, camera, height, width, outfile)
     ##############
     # Determine edges
     ##############
-    mask = edge_detection(objs)
+    mask, canvas = edge_detection(objs, canvas)
 
     # clamp canvas to valid range:
     clamp01!(canvas)
