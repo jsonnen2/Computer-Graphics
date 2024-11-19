@@ -66,7 +66,7 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
     closest_hitrec = closest_intersect(scene.objects, ray, tmin, tmax)
 
     if closest_hitrec === nothing
-        return scene.background
+        return scene.background, nothing
     end
     # define variables
     object = closest_hitrec.object
@@ -74,11 +74,6 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
     shader = material.shading_model
     mirror_coeff = material.mirror_coeff
 
-    # if closest_hitrec.uv[2] > 1
-    #     println(closest_hitrec.uv)
-    #     error()
-    # end
-    # call color
     local_color = determine_color(shader, object.material, ray, closest_hitrec, scene)
 
     ##############################
@@ -95,15 +90,15 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
             (r - 2 * dot(r, n) * n),
         )
         # recurse on reflected ray
-        reflect_color = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
+        reflect_color, other = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
 
         # scale according to mirror_coeff
         color = (1 - mirror_coeff) * local_color + mirror_coeff * reflect_color
     else
         color = local_color
     end
-
-    color
+    
+    return color, object
 
     #
     ############
@@ -166,7 +161,7 @@ function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, l
     lightIntensity = light.intensity # Get light intensity
     diffuseAlbedo = get_diffuse(material, hitrec.uv) # Get diffuse albedo from material
     diffuseColor = diffuseAlbedo * lightIntensity * lightDirection # Calculate diffuse color
-
+    
     if (is_shadowed(scene, light, hitrec.intersection)) # Check for shadows, return black color if true
         return RGB(0.0, 0.0, 0.0)
     end
@@ -234,6 +229,28 @@ end
 # END TODO 5a #
 ##############
 
+function edge_detection(objs, proximity=1)
+
+    height, width = size(objs)
+    mask = falses(height, width)
+
+    # Check first pixel seperately
+    if (objs[1,1] !== objs[2,1]) || (objs[1,1] !== objs[1,2])
+        mask[1,1] = true
+    end
+
+    # Iterate image to find edges
+    for i in 2:height
+        for j in 2:width
+            if (objs[i,j] !== objs[i-1,j]) || (objs[i,j] !== objs[i,j-1])
+
+                mask[i,j] = true
+            end 
+        end
+    end
+    return mask
+end
+
 # Main loop:
 function main(scene, camera, height, width, outfile)
 
@@ -244,6 +261,7 @@ function main(scene, camera, height, width, outfile)
 
     # Create a blank canvas to store the image:
     canvas = zeros(RGB{Float32}, height, width)
+    objs = Array{Any}(undef, height, width)
 
     ##########
     # TODO 3 #
@@ -258,13 +276,15 @@ function main(scene, camera, height, width, outfile)
             view_ray = Cameras.pixel_to_ray(camera, i, j)
             tmin = 1
             tmax = Inf
-            color = traceray(scene, view_ray, tmin, tmax)
+            color, obj_id = traceray(scene, view_ray, tmin, tmax)
             canvas[i, j] = color
+            objs[i, j] = obj_id
         end
     end
     ##############
-    # END TODO 3 #
+    # Determine edges
     ##############
+    mask = edge_detection(objs)
 
     # clamp canvas to valid range:
     clamp01!(canvas)

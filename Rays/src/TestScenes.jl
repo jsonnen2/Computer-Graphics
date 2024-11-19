@@ -17,6 +17,8 @@ blue = RGB{Float32}(0, 0, 1)
 white = RGB{Float32}(1, 1, 1)
 purple = RGB{Float32}(1, 0, 1)
 
+# Rays.main(1, 1, 200, 300, "results/out_1.png")
+
 function camera_1(img_height, img_width)
     CanonicalCamera(img_height, img_width)
 end
