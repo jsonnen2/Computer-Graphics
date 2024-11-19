@@ -246,7 +246,7 @@ function edge_detection(objs, canvas, proximity=1)
             if (objs[i,j] !== objs[i-1,j]) || (objs[i,j] !== objs[i,j-1])
 
                 mask[i,j] = true
-                canvas[i,j] = RGB{Float32}(0,1,0)
+                #canvas[i,j] = RGB{Float32}(0,1,0)
             end 
         end
     end
@@ -254,7 +254,7 @@ function edge_detection(objs, canvas, proximity=1)
 end
 
 # Main loop:
-function main(scene, camera, height, width, outfile)
+function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
 
     # get the requested scene and camera
     scene = TestScenes.get_scene(scene)
@@ -273,11 +273,11 @@ function main(scene, camera, height, width, outfile)
     #   for each pixel, get a viewing ray from the camera
     #   then call traceray to determine its color
     #
+    tmin = 1
+    tmax = Inf
     for i in 1:height
         for j in 1:width
             view_ray = Cameras.pixel_to_ray(camera, i, j)
-            tmin = 1
-            tmax = Inf
             color, obj_id = traceray(scene, view_ray, tmin, tmax)
             canvas[i, j] = color
             objs[i, j] = obj_id
@@ -287,6 +287,46 @@ function main(scene, camera, height, width, outfile)
     # Determine edges
     ##############
     mask, canvas = edge_detection(objs, canvas)
+
+    #########################
+    # Edge-based antialiasing
+    #########################
+    if (aa_mode != 0)
+        for i in 1:height
+            for j in 1:width
+                if (mask[i, j] == true)
+                    color = RGB{Float32}(0,0,0)
+                    # Uniform sampling
+                    if (aa_mode == 1)
+                        for p in 0:aa_samples-1
+                            for q in 0:aa_samples-1
+                                view_ray = Cameras.pixel_to_ray(camera, i + (p+0.5)/aa_samples, j + (q+0.5)/aa_samples)
+                                sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
+                                color = color + sub_px_color
+                            end
+                        end
+                    # Random sampling
+                    elseif (aa_mode == 2)
+                        for p in 1:aa_samples^2
+                            view_ray = Cameras.pixel_to_ray(camera, i + rand(Float32), j + rand(Float32))
+                            sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
+                            color = color + sub_px_color
+                        end
+                    # Stratified sampling 
+                    elseif (aa_mode == 3)
+                        for p in 0:aa_samples-1
+                            for q in 0:aa_samples-1
+                                view_ray = Cameras.pixel_to_ray(camera, i + (p+rand(Float32))/aa_samples, j + (q+rand(Float32))/aa_samples)
+                                sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
+                                color = color + sub_px_color
+                            end
+                        end
+                    end
+                    canvas[i, j] = color / aa_samples ^ 2
+                end
+            end
+        end
+    end
 
     # clamp canvas to valid range:
     clamp01!(canvas)
