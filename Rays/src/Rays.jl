@@ -3,7 +3,7 @@ Main module for CS480/580 A2 raytracer. Contains core raytracing algrithm,
 while referencing several other modules that encapsulate supporting
 functionality.
 """
-# Rays.main(1, 1, 200, 300, "results/out_1.png")
+# Rays.main(7, 1, 300, 300, "results/bunny_green_edges.png")
 module Rays
 
 export main
