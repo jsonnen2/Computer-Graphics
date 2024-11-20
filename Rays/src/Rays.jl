@@ -61,7 +61,7 @@ end
 
 """ Trace a ray from orig along ray through scene, using Whitted recursive raytracing 
 limited to rec_depth recursive calls. """
-function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.0, transparency=0.5)
+function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, transparency=0.5)
 
     closest_hitrec = closest_intersect(scene.objects, ray, tmin, tmax)
 
@@ -97,7 +97,7 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.0, tran
     end
 
     ##############################
-    # Refraction #
+    # Refraction # (Assumes refractive object is glass, which has an IOR of 1.5)
     ##############################
     if transparency > 0 && rec_depth <= 8
         refract_color = refract_ray(scene, ray, closest_hitrec, tmin, tmax, rec_depth, ior)
@@ -113,46 +113,43 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.0, tran
 end
 
 ##############################
-# Refraction Function #
+# Refraction Function # (Assumes refractive object is glass, which has an IOR of 1.5)
 ##############################
 function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_depth, ior=1.5)
-    r = ray.direction
-    n = hitrec.normal
-    cos_theta_i = -dot(r, n)
-    eta = ior  # Assume entering the material by default
+    r = normalize(ray.direction)  # Normalize ray direction
+    n = normalize(hitrec.normal)  # Normalize surface normal
+    cos_theta_i = -dot(r, n)      # Cosine of the angle of incidence
 
-    # Check if the ray is exiting the object
+    # Determine if ray is entering or exiting
+    eta = ior  # Refractive index ratio (n₁ / n₂)
     if cos_theta_i < 0
-        n = -n  # Reverse the normal for exiting
-        eta = 1.0 / ior  # Invert the refractive index ratio
-        cos_theta_i = -cos_theta_i
+        n = -n  # Flip normal for exiting rays
+        eta = 1.0 / ior  # Adjust eta for exiting rays
+        cos_theta_i = -cos_theta_i  # Make cosine positive
     end
 
-    # Compute sin^2(θ_t) to check for Total Internal Reflection
-    sin2_theta_t = eta^2 * (1 - cos_theta_i^2)
+    # Snell's Law: Compute sin²(θ₂)
+    sin2_theta_t = eta^2 * (1.0 - cos_theta_i^2)
 
-    # Total Internal Reflection (TIR) occurs if sin^2(θ_t) > 1
-    if sin2_theta_t > 1
-        # Compute reflection ray
-        reflect_dir = normalize(r - 2 * dot(r, n) * n)
+    # Handle Total Internal Reflection (TIR)
+    if sin2_theta_t > 1.0
+        reflect_dir = normalize(r - 2.0 * dot(r, n) * n)  # Compute reflection direction
         reflect_ray = Ray(hitrec.intersection, reflect_dir)
-        reflect_color, other = traceray(scene, reflect_ray, tmin, tmax, rec_depth + 1)
-        return reflect_color  # Handle TIR with reflection
+        reflect_color, _ = traceray(scene, reflect_ray, tmin, tmax, rec_depth + 1)
+        return reflect_color  # Return reflection color if TIR occurs
     end
 
-    # Compute cos(θ_t) for transmitted ray
-    cos_theta_t = sqrt(1 - sin2_theta_t)
-
-    # Compute the refracted direction using Snell's Law
+    # Compute refracted direction
+    cos_theta_t = sqrt(1.0 - sin2_theta_t)
     refract_dir = normalize(eta * r + (eta * cos_theta_i - cos_theta_t) * n)
 
-    # Generate the refracted ray
+    # Generate refracted ray
     refract_ray = Ray(hitrec.intersection, refract_dir)
 
     # Recursively trace the refracted ray
-    refract_color, other = traceray(scene, refract_ray, tmin, tmax, rec_depth + 1, ior)
+    refract_color, _ = traceray(scene, refract_ray, tmin, tmax, rec_depth + 1, ior)
 
-    return refract_color
+    return refract_color  # Return refraction contribution
 end
 
 """ Determine the color of intersection point described by hitrec 
@@ -303,7 +300,7 @@ function edge_detection(objs, canvas, proximity=1)
 end
 
 # Main loop:
-function main(scene, camera, height, width, outfile, aa_mode, aa_samples, ior, transparency)
+function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
 
     # get the requested scene and camera
     scene = TestScenes.get_scene(scene)
@@ -327,7 +324,7 @@ function main(scene, camera, height, width, outfile, aa_mode, aa_samples, ior, t
     for i in 1:height
         for j in 1:width
             view_ray = Cameras.pixel_to_ray(camera, i, j)
-            color, obj_id = traceray(scene, view_ray, tmin, tmax, ior, transparency)
+            color, obj_id = traceray(scene, view_ray, tmin, tmax)
             canvas[i, j] = color
             objs[i, j] = obj_id
         end

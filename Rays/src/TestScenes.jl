@@ -246,7 +246,7 @@ function scene_11()
     objs = [
         Sphere(Vec3(-1, 1, -8), 1, mat_blueSphere),  # Solid sphere offset to top front sphere
         Sphere(Vec3(0, 1.5, -6), 1, mat_blueGlass),  # Glass-like sphere in top front
-        Sphere(Vec3(1, -1, -8), 1, mat_redSphere),  # Red sphere offset to the right of bottom sphere
+        Sphere(Vec3(1, -3, -8), 1, mat_redSphere),  # Red sphere offset to the right of bottom sphere
         Sphere(Vec3(0, -1.5, -6), 1, mat_redGlass),  # Glass-like sphere in bottom front
     ]
 
