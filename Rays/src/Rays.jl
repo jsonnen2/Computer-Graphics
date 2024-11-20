@@ -277,21 +277,54 @@ function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
     tmax = Inf
     for i in 1:height
         for j in 1:width
-            view_ray = Cameras.pixel_to_ray(camera, i, j)
-            color, obj_id = traceray(scene, view_ray, tmin, tmax)
-            canvas[i, j] = color
-            objs[i, j] = obj_id
+            color = RGB{Float32}(0,0,0)
+            # Uniform AA (Full Image)
+            if (aa_mode == 4)
+                for p in 0:aa_samples-1
+                    for q in 0:aa_samples-1
+                        view_ray = Cameras.pixel_to_ray(camera, i + (p+0.5)/aa_samples, j + (q+0.5)/aa_samples)
+                        sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
+                        color = color + sub_px_color
+                    end
+                end
+                canvas[i, j] = color / aa_samples ^ 2
+            # Random AA (Full Image)
+            elseif (aa_mode == 5)
+                for p in 1:aa_samples^2
+                    view_ray = Cameras.pixel_to_ray(camera, i + rand(Float32), j + rand(Float32))
+                    sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
+                    color = color + sub_px_color
+                end
+                canvas[i, j] = color / aa_samples ^ 2
+            # Stratified AA (Full Image)
+            elseif (aa_mode == 6)
+                for p in 0:aa_samples-1
+                    for q in 0:aa_samples-1
+                        view_ray = Cameras.pixel_to_ray(camera, i + (p+rand(Float32))/aa_samples, j + (q+rand(Float32))/aa_samples)
+                        sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
+                        color = color + sub_px_color
+                    end
+                end
+                canvas[i, j] = color / aa_samples ^ 2
+            else
+                view_ray = Cameras.pixel_to_ray(camera, i, j)
+                color, obj_id = traceray(scene, view_ray, tmin, tmax)
+                canvas[i, j] = color
+                objs[i, j] = obj_id
+            end
         end
     end
     ##############
     # Determine edges
     ##############
-    mask, canvas = edge_detection(objs, canvas)
+    if (aa_mode < 4)
+        mask, canvas = edge_detection(objs, canvas)
+    end
 
     #########################
     # Edge-based antialiasing
     #########################
-    if (aa_mode != 0)
+    if (aa_mode != 0 && aa_mode < 4)
         for i in 1:height
             for j in 1:width
                 if (mask[i, j] == true)
