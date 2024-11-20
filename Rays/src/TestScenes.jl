@@ -233,13 +233,33 @@ function scene_10()
     Scene(bg, tri, lights)
 end
 
-function artifact_yourwwuname(img_height, img_width)
-    ##################################
-    # TODO 10 - one per group member #
-    ##################################
+# Test refraction (Scene 3 duplicate with some modifications)
+function scene_11()
+    bg = black
+
+    # Materials
+    mat_blueSphere = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.2, 0.5, 0.7))  # Opaque Blue material
+    mat_blueGlass = Material(Lambertian(), 0.5, nothing, RGB{Float32}(0.7, 0.9, 1.0))  # Blue glass material
+    mat_redSphere = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.8, 0.3, 0.3))  # Opaque Red material
+    mat_redGlass = Material(Lambertian(), 0.5, nothing, RGB{Float32}(1.0, 0.9, 1.0))  # Red glass material
+    # Objects
+    objs = [
+        Sphere(Vec3(-1, 1, -8), 1, mat_blueSphere),  # Solid sphere offset to top front sphere
+        Sphere(Vec3(0, 1.5, -6), 1, mat_blueGlass),  # Glass-like sphere in top front
+        Sphere(Vec3(1, -3, -8), 1, mat_redSphere),  # Red sphere offset to the right of bottom sphere
+        Sphere(Vec3(0, -1.5, -6), 1, mat_redGlass),  # Glass-like sphere in bottom front
+    ]
+
+    # Lights
+    lights = [
+        PointLight(2.0, Vec3(0, 5, -8.5)),  # Bright point light from above
+        PointLight(0.75, Vec3(0, -5, 8.5))  # Dimmer point light from below
+    ]
+
+    # Create and return the scene
+    Scene(bg, objs, lights)
 end
 
-
-scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7, scene_8, scene_9]
+scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7, scene_8, scene_9, scene_10, scene_11]
 
 end # module TestScenes
