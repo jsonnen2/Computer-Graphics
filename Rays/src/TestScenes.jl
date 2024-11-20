@@ -238,16 +238,16 @@ function scene_11()
     bg = black
 
     # Materials
-    mat_solid = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.2, 0.5, 0.7))  # Opaque diffuse material
-    mat_Blueglasslike = Material(Lambertian(), 0.5, nothing, RGB{Float32}(0.7, 0.9, 1.0))  # Blue glass-like material, more translucent
-    mat_redsphere = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.8, 0.3, 0.3))  # Redish material for third sphere
-    mat_Redglasslike = Material(Lambertian(), 0.5, nothing, RGB{Float32}(1.0, 0.9, 1.0))  # Red glass-like material, more translucent
+    mat_blueSphere = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.2, 0.5, 0.7))  # Opaque Blue material
+    mat_blueGlass = Material(Lambertian(), 0.5, nothing, RGB{Float32}(0.7, 0.9, 1.0))  # Blue glass material
+    mat_redSphere = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.8, 0.3, 0.3))  # Opaque Red material
+    mat_redGlass = Material(Lambertian(), 0.5, nothing, RGB{Float32}(1.0, 0.9, 1.0))  # Red glass material
     # Objects
     objs = [
-        Sphere(Vec3(-1, 1, -8), 1, mat_solid),  # Solid sphere offset to top front sphere
-        Sphere(Vec3(0, 1.5, -6), 1, mat_Blueglasslike),  # Glass-like sphere in top front
-        Sphere(Vec3(1, -1, -8), 1, mat_redsphere),  # Red sphere offset to the right of bottom sphere
-        Sphere(Vec3(0, -1.5, -6), 1, mat_Redglasslike),  # Glass-like sphere in bottom front
+        Sphere(Vec3(-1, 1, -8), 1, mat_blueSphere),  # Solid sphere offset to top front sphere
+        Sphere(Vec3(0, 1.5, -6), 1, mat_blueGlass),  # Glass-like sphere in top front
+        Sphere(Vec3(1, -1, -8), 1, mat_redSphere),  # Red sphere offset to the right of bottom sphere
+        Sphere(Vec3(0, -1.5, -6), 1, mat_redGlass),  # Glass-like sphere in bottom front
     ]
 
     # Lights
