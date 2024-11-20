@@ -61,7 +61,7 @@ end
 
 """ Trace a ray from orig along ray through scene, using Whitted recursive raytracing 
 limited to rec_depth recursive calls. """
-function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
+function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.0, transparency=0.5)
 
     closest_hitrec = closest_intersect(scene.objects, ray, tmin, tmax)
 
@@ -93,17 +93,66 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
         reflect_color, other = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
 
         # scale according to mirror_coeff
-        color = (1 - mirror_coeff) * local_color + mirror_coeff * reflect_color
-    else
-        color = local_color
+        local_color = (1 - mirror_coeff) * local_color + mirror_coeff * reflect_color
     end
-    
-    return color, object
+
+    ##############################
+    # Refraction #
+    ##############################
+    if transparency > 0 && rec_depth <= 8
+        refract_color = refract_ray(scene, ray, closest_hitrec, tmin, tmax, rec_depth, ior)
+        local_color = (1 - transparency) * local_color + transparency * refract_color
+    end
+
+    return local_color, object
 
     #
     ############
     # END TODO 6
     ############
+end
+
+##############################
+# Refraction Function #
+##############################
+function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_depth, ior=1.5)
+    r = ray.direction
+    n = hitrec.normal
+    cos_theta_i = -dot(r, n)
+    eta = ior  # Assume entering the material by default
+
+    # Check if the ray is exiting the object
+    if cos_theta_i < 0
+        n = -n  # Reverse the normal for exiting
+        eta = 1.0 / ior  # Invert the refractive index ratio
+        cos_theta_i = -cos_theta_i
+    end
+
+    # Compute sin^2(θ_t) to check for Total Internal Reflection
+    sin2_theta_t = eta^2 * (1 - cos_theta_i^2)
+
+    # Total Internal Reflection (TIR) occurs if sin^2(θ_t) > 1
+    if sin2_theta_t > 1
+        # Compute reflection ray
+        reflect_dir = normalize(r - 2 * dot(r, n) * n)
+        reflect_ray = Ray(hitrec.intersection, reflect_dir)
+        reflect_color, other = traceray(scene, reflect_ray, tmin, tmax, rec_depth + 1)
+        return reflect_color  # Handle TIR with reflection
+    end
+
+    # Compute cos(θ_t) for transmitted ray
+    cos_theta_t = sqrt(1 - sin2_theta_t)
+
+    # Compute the refracted direction using Snell's Law
+    refract_dir = normalize(eta * r + (eta * cos_theta_i - cos_theta_t) * n)
+
+    # Generate the refracted ray
+    refract_ray = Ray(hitrec.intersection, refract_dir)
+
+    # Recursively trace the refracted ray
+    refract_color, other = traceray(scene, refract_ray, tmin, tmax, rec_depth + 1, ior)
+
+    return refract_color
 end
 
 """ Determine the color of intersection point described by hitrec 
@@ -161,7 +210,7 @@ function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, l
     lightIntensity = light.intensity # Get light intensity
     diffuseAlbedo = get_diffuse(material, hitrec.uv) # Get diffuse albedo from material
     diffuseColor = diffuseAlbedo * lightIntensity * lightDirection # Calculate diffuse color
-    
+
     if (is_shadowed(scene, light, hitrec.intersection)) # Check for shadows, return black color if true
         return RGB(0.0, 0.0, 0.0)
     end
@@ -235,26 +284,26 @@ function edge_detection(objs, canvas, proximity=1)
     mask = falses(height, width)
 
     # Check first pixel seperately
-    if (objs[1,1] !== objs[2,1]) || (objs[1,1] !== objs[1,2])
-        mask[1,1] = true
-        canvas[i,j] = RGB{Float32}(0,1,0)
+    if (objs[1, 1] !== objs[2, 1]) || (objs[1, 1] !== objs[1, 2])
+        mask[1, 1] = true
+        canvas[i, j] = RGB{Float32}(0, 1, 0)
     end
 
     # Iterate image to find edges
     for i in 2:height
         for j in 2:width
-            if (objs[i,j] !== objs[i-1,j]) || (objs[i,j] !== objs[i,j-1])
+            if (objs[i, j] !== objs[i-1, j]) || (objs[i, j] !== objs[i, j-1])
 
-                mask[i,j] = true
+                mask[i, j] = true
                 #canvas[i,j] = RGB{Float32}(0,1,0)
-            end 
+            end
         end
     end
     return mask, canvas
 end
 
 # Main loop:
-function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
+function main(scene, camera, height, width, outfile, aa_mode, aa_samples, ior, transparency)
 
     # get the requested scene and camera
     scene = TestScenes.get_scene(scene)
@@ -278,7 +327,7 @@ function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
     for i in 1:height
         for j in 1:width
             view_ray = Cameras.pixel_to_ray(camera, i, j)
-            color, obj_id = traceray(scene, view_ray, tmin, tmax)
+            color, obj_id = traceray(scene, view_ray, tmin, tmax, ior, transparency)
             canvas[i, j] = color
             objs[i, j] = obj_id
         end
@@ -295,34 +344,34 @@ function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
         for i in 1:height
             for j in 1:width
                 if (mask[i, j] == true)
-                    color = RGB{Float32}(0,0,0)
+                    color = RGB{Float32}(0, 0, 0)
                     # Uniform sampling
                     if (aa_mode == 1)
                         for p in 0:aa_samples-1
                             for q in 0:aa_samples-1
-                                view_ray = Cameras.pixel_to_ray(camera, i + (p+0.5)/aa_samples, j + (q+0.5)/aa_samples)
+                                view_ray = Cameras.pixel_to_ray(camera, i + (p + 0.5) / aa_samples, j + (q + 0.5) / aa_samples)
                                 sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
                                 color = color + sub_px_color
                             end
                         end
-                    # Random sampling
+                        # Random sampling
                     elseif (aa_mode == 2)
                         for p in 1:aa_samples^2
                             view_ray = Cameras.pixel_to_ray(camera, i + rand(Float32), j + rand(Float32))
                             sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
                             color = color + sub_px_color
                         end
-                    # Stratified sampling 
+                        # Stratified sampling 
                     elseif (aa_mode == 3)
                         for p in 0:aa_samples-1
                             for q in 0:aa_samples-1
-                                view_ray = Cameras.pixel_to_ray(camera, i + (p+rand(Float32))/aa_samples, j + (q+rand(Float32))/aa_samples)
+                                view_ray = Cameras.pixel_to_ray(camera, i + (p + rand(Float32)) / aa_samples, j + (q + rand(Float32)) / aa_samples)
                                 sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
                                 color = color + sub_px_color
                             end
                         end
                     end
-                    canvas[i, j] = color / aa_samples ^ 2
+                    canvas[i, j] = color / aa_samples^2
                 end
             end
         end
