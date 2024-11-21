@@ -32,6 +32,11 @@ import .Scenes.HitRecord
 import .Cameras
 import .TestScenes
 
+mutable struct Edge_Storage
+    obj_id::Vector{Any}
+    num_shadows::Int
+end
+
 # Ray-Scene intersection:
 """ Find the closest intersection point among all objects in the scene
 along a ray, constraining the search to values of t between tmin and tmax. """
@@ -66,7 +71,7 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, tran
     closest_hitrec = closest_intersect(scene.objects, ray, tmin, tmax)
 
     if closest_hitrec === nothing
-        return scene.background, nothing
+        return scene.background, Edge_Storage([nothing], 0)
     end
     # define variables
     object = closest_hitrec.object
@@ -74,7 +79,8 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, tran
     shader = material.shading_model
     mirror_coeff = material.mirror_coeff
 
-    local_color = determine_color(shader, object.material, ray, closest_hitrec, scene)
+    local_color, num_shadows = determine_color(shader, object.material, ray, closest_hitrec, scene)
+    edge_detect = Edge_Storage([object], num_shadows)
 
     ##############################
     # TODO 6 - mirror reflection #
@@ -90,7 +96,11 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, tran
             (r - 2 * dot(r, n) * n),
         )
         # recurse on reflected ray
-        reflect_color, other = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
+        reflect_color, edge_detect_reflect = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
+        # Merge. overwrite shadow. Append old object to edge_detect_reflect
+        push!(edge_detect_reflect.obj_id, object)
+        edge_detect_reflect.num_shadows = num_shadows
+        edge_detect = edge_detect_reflect
 
         # scale according to mirror_coeff
         local_color = (1 - mirror_coeff) * local_color + mirror_coeff * reflect_color
@@ -100,16 +110,13 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, tran
     # Refraction # (Assumes refractive object is glass, which has an IOR of 1.5)
     ##############################
     if transparency > 0 && rec_depth <= 8
+        # TODO: find object id recursively
         refract_color = refract_ray(scene, ray, closest_hitrec, tmin, tmax, rec_depth, ior)
         local_color = (1 - transparency) * local_color + transparency * refract_color
     end
 
-    return local_color, object
+    return local_color, edge_detect
 
-    #
-    ############
-    # END TODO 6
-    ############
 end
 
 ##############################
@@ -155,12 +162,12 @@ end
 """ Determine the color of intersection point described by hitrec 
 Flat shading - just color the pixel the material's diffuse color """
 function determine_color(shader::Flat, material::Material, ray::Ray, hitrec::HitRecord, scene::Scene)
-    get_diffuse(material, hitrec.uv)
+    get_diffuse(material, hitrec.uv), 0
 end
 """ Normal shading - color-code pixels according to their normals """
 function determine_color(shader::Normal, material::Material, ray::Ray, hitrec::HitRecord, scene::Scene)
     normal_color = normalize(hitrec.normal) / 2 .+ 0.5
-    RGB{Float32}(normal_color...)
+    RGB{Float32}(normal_color...), 0
 end
 
 
@@ -175,13 +182,16 @@ function determine_color(shader::PhysicalShadingModel, material::Material, ray::
     #   add the light's contribution into the color
     # return the resulting color
     #
+    num_shadows = 0
     color = RGB(0.0, 0.0, 0.0) # Start with black color value
     for light in scene.lights # For every light in the scene, determine its contribution to scene lighting using shade_light()
-        lightContribution = shade_light(shader, material, ray, hitrec, light, scene)
+        lightContribution, is_shadow = shade_light(shader, material, ray, hitrec, light, scene)
         color += lightContribution # Add that light's shadow contribution to the color
+        num_shadows += is_shadow
     end
 
-    return color # Return the color
+    shadowed = Int(floor(num_shadows // length(scene.lights)))
+    return color, num_shadows
     #############
     # END TODO 4c
     #############
@@ -209,10 +219,10 @@ function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, l
     diffuseColor = diffuseAlbedo * lightIntensity * lightDirection # Calculate diffuse color
 
     if (is_shadowed(scene, light, hitrec.intersection)) # Check for shadows, return black color if true
-        return RGB(0.0, 0.0, 0.0)
+        return RGB(0.0, 0.0, 0.0), 1
     end
 
-    return diffuseColor
+    return diffuseColor, 0
     # END TODO 4b
     #############
 end
@@ -234,14 +244,14 @@ function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, l
     specularExponent = shader.specular_exp # Get specular exponent
 
     if (is_shadowed(scene, light, hitrec.intersection)) # Check if the point is shadowed
-        return RGB(0.0, 0.0, 0.0) # If true, return a black value for that point
+        return RGB(0.0, 0.0, 0.0), 1 # If true, return a black value for that point
     end
 
     # Calculate specular reflection using the diffuse and specular components
     diffuse = diffuseColor * I * max(0, dot(surfaceNormal, lightDirection))
     specular = specularColor * I * max(0, dot(surfaceNormal, halfVector))^specularExponent
 
-    return diffuse + specular # Return the combined color from the diffuse and specular components
+    return diffuse + specular, 0 # Return the combined color from the diffuse and specular components
     #############
     # END TODO 4d
     #############
@@ -271,36 +281,80 @@ function is_shadowed(scene, light::PointLight, point::Vec3)
     rayHit = Rays.closest_intersect(scene.objects, shadowRay, tmin, tmax) # Calculate closest intersection of rays
     return rayHit !== nothing # Return true/false if the shadowed ray hits some object
 end
-##############
-# END TODO 5a #
-##############
 
-function edge_detection(objs, canvas, proximity=1)
+
+function draw_circle!(canvas, center::Tuple{Int, Int}, radius::Float64, result)
+    height, width = size(canvas)
+    cx, cy = center
+    r = Int(ceil(radius))
+
+    # Bounding box around the circle
+    for x in -r:r
+        for y in -r:r
+            # Calculate is in circle for each pixel in square
+            if x^2 + y^2 <= radius^2
+                # Apply circle's center to the coords
+                px = cx + x
+                py = cy + y
+                
+                # Check boundaries
+                if 1 <= px <= width && 1 <= py <= height
+                    canvas[px, py] = result
+                end
+            end
+        end
+    end
+end
+
+
+function edge_detection!(
+        objs::Matrix{Edge_Storage}, proximity::Float64 = 0.0, 
+        canvas::Union{Matrix{ColorTypes.RGB{Float32}}, Nothing}=nothing,
+        detect_shadows::Bool = false)
 
     height, width = size(objs)
     mask = falses(height, width)
 
-    # Check first pixel seperately
-    if (objs[1, 1] !== objs[2, 1]) || (objs[1, 1] !== objs[1, 2])
-        mask[1, 1] = true
-        canvas[i, j] = RGB{Float32}(0, 1, 0)
-    end
-
     # Iterate image to find edges
     for i in 2:height
-        for j in 2:width
-            if (objs[i, j] !== objs[i-1, j]) || (objs[i, j] !== objs[i, j-1])
+        for j in 2:width 
+            edge = false
 
-                mask[i, j] = true
-                #canvas[i,j] = RGB{Float32}(0,1,0)
+            # Detect shadow edges
+            if detect_shadows
+                if (objs[i, j].num_shadows !== objs[i-1, j].num_shadows) ||
+                    (objs[i, j].num_shadows !== objs[i, j-1].num_shadows) ||
+                    (objs[i, j].num_shadows !== objs[i-1, j-1].num_shadows)
+                    # edge detected
+                    edge = true
+                end
+            end
+
+            # Detect object edges
+            if  (objs[i, j].obj_id[1] !== objs[i-1, j].obj_id[1]) || 
+                (objs[i, j].obj_id[1] !== objs[i, j-1].obj_id[1]) ||
+                (objs[i, j].obj_id[1] !== objs[i-1, j-1].obj_id[1]) 
+                # edge detected 
+                edge = true
+            end 
+    
+            if edge
+                center = (i, j)
+                draw_circle!(mask, center, proximity, true)
+                if canvas !== nothing
+                    draw_circle!(canvas, center, proximity, RGB{Float32}(0, 1, 0))
+                end
             end
         end
     end
-    return mask, canvas
+    return mask
 end
 
 # Main loop:
-function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
+function main(scene, camera, height, width, outfile, 
+                aa_mode=0, aa_samples=1)
+    aa_mode = 0
+    aa_samples = 1
 
     # get the requested scene and camera
     scene = TestScenes.get_scene(scene)
@@ -309,7 +363,7 @@ function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
 
     # Create a blank canvas to store the image:
     canvas = zeros(RGB{Float32}, height, width)
-    objs = Array{Any}(undef, height, width)
+    objs = Array{Edge_Storage}(undef, height, width)
 
     ##########
     # TODO 3 #
@@ -354,9 +408,9 @@ function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
                 canvas[i, j] = color / aa_samples ^ 2
             else
                 view_ray = Cameras.pixel_to_ray(camera, i, j)
-                color, obj_id = traceray(scene, view_ray, tmin, tmax)
+                color, edge_stor = traceray(scene, view_ray, tmin, tmax)
                 canvas[i, j] = color
-                objs[i, j] = obj_id
+                objs[i, j] = edge_stor
             end
         end
     end
@@ -364,7 +418,7 @@ function main(scene, camera, height, width, outfile, aa_mode, aa_samples)
     # Determine edges
     ##############
     if (aa_mode < 4)
-        mask, canvas = edge_detection(objs, canvas)
+        mask = edge_detection!(objs, 1.0, canvas, false)
     end
 
     #########################
