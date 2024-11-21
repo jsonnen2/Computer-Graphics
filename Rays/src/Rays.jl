@@ -330,13 +330,28 @@ function edge_detection!(
                 end
             end
 
-            # Detect object edges
-            if  (objs[i, j].obj_id[1] !== objs[i-1, j].obj_id[1]) || 
-                (objs[i, j].obj_id[1] !== objs[i, j-1].obj_id[1]) ||
-                (objs[i, j].obj_id[1] !== objs[i-1, j-1].obj_id[1]) 
-                # edge detected 
-                edge = true
-            end 
+            id1 = objs[i-1,j-1].obj_id
+            id2 = objs[i-1,j].obj_id
+            id3 = objs[i,j-1].obj_id
+            id4 = objs[i,j].obj_id
+            min = minimum([length(id1), length(id2), length(id3), length(id4)])
+
+            for n in 1:min
+                if (id1[n] !== id4[n]) ||
+                    (id2[n] !== id4[n]) ||
+                    (id3[n] !== id4[n])
+                    # edge detected
+                    edge = true
+                end
+            end
+
+            # # Detect object edges
+            # if  (objs[i, j].obj_id[1] !== objs[i-1, j].obj_id[1]) || 
+            #     (objs[i, j].obj_id[1] !== objs[i, j-1].obj_id[1]) ||
+            #     (objs[i, j].obj_id[1] !== objs[i-1, j-1].obj_id[1]) 
+            #     # edge detected 
+            #     edge = true
+            # end 
     
             if edge
                 center = (i, j)
@@ -418,7 +433,7 @@ function main(scene, camera, height, width, outfile,
     # Determine edges
     ##############
     if (aa_mode < 4)
-        mask = edge_detection!(objs, 1.0, canvas, false)
+        mask = edge_detection!(objs, 0.0, canvas, true)
     end
 
     #########################

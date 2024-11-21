@@ -185,14 +185,14 @@ function scene_7()
 
     lights = [
         PointLight(0.5, Vec3(1, 2, -5)),
-        # PointLight(0.5, Vec3(-1, -2, -5)),  # Light 1
-        # PointLight(0.7, Vec3(10, 5, -8)),  # Light 2
-        # PointLight(0.6, Vec3(5, 10, -12)), # Light 3
-        # PointLight(0.4, Vec3(-5, 3, -15)), # Light 4
-        DirectionalLight(0.3, Vec3(0, 0, 1)),
-        DirectionalLight(0.3, Vec3(0, 1, 1)),
+        PointLight(0.5, Vec3(-1, -2, -5)),  # Light 1
+        PointLight(0.7, Vec3(10, 5, -8)),  # Light 2
+        PointLight(0.6, Vec3(5, 10, -12)), # Light 3
+        PointLight(0.4, Vec3(-5, 3, -15)), # Light 4
+        # DirectionalLight(0.3, Vec3(0, 0, 1)),
+        # DirectionalLight(0.3, Vec3(0, 1, 1)),
         DirectionalLight(0.3, Vec3(1, 1, 1)),
-        DirectionalLight(0.3, Vec3(0, 1, 0))
+        # DirectionalLight(0.3, Vec3(0, 1, 0))
         ]
 
     Scene(bg, objs, lights)
