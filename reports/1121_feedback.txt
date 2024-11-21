@@ -1,0 +1,13 @@
+Looks like good progress. It would be nice if your report made it easier for me to understand your progress on each deliverable at a glance.
+In terms of the original MS1 goals: 
+ - refraction is working on spheres; does it also work on meshes?
+ - edge detection is working, but a softer edge map is desired
+ - global and edge-aware anti-aliasing is working (this was a MS2 goal)
+ - area lights are not implemented yet
+
+In future reports please also include instructions for running your code (ideally with test scenes that showcase your results, such as the ones in the renders in your report).
+
+Looking forward to seeing your MS2 results.
+
+
+
