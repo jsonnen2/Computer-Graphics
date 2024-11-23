@@ -411,10 +411,14 @@ function blur(infile::String, outfile::String, conv::String)
     # apply bluring to an image using convolutions
     # 1. Gaussian
     # 2. Blocky 
+    # 3. Edge Detection
+
+    # load image
     img = load(infile)
     canvas = reinterpret(RGB{N0f8}, img)
     width, height = size(canvas)
 
+    # load convolution matrix & store size
     conv_matrix = determine_conv_matrix(conv)
     CX, CY = size(conv_matrix)
     cx, cy = Int((CX-1)/2), Int((CY-1)/2)
