@@ -12,6 +12,7 @@ using FileIO
 using Images
 using StaticArrays
 using LinearAlgebra
+using Images
 
 push!(LOAD_PATH, pwd())
 include("GfxBase.jl")
@@ -53,7 +54,8 @@ function closest_intersect(objects::Array{Any,1}, ray::Ray, tmin, tmax)
     smallest_dist = tmax # Get smallest intersection distance (set to tmax to start)
     for obj in objects # Loop through all objects and find the closest intersection
         hitrec = Scenes.ray_intersect(ray, obj)
-        if (hitrec !== nothing) && (hitrec.t > tmin && hitrec.t < smallest_dist) # Check if there is an object intersection and if the object in question is the closest one
+        if (hitrec !== nothing) && (hitrec.t > tmin && hitrec.t < smallest_dist) 
+            # Check if there is an object intersection and if the object in question is the closest one
             closest_hitrec = hitrec # If true, record the hitrec and the closest distance
             smallest_dist = hitrec.t
         end
@@ -344,14 +346,6 @@ function edge_detection!(
                     edge = true
                 end
             end
-
-            # # Detect object edges
-            # if  (objs[i, j].obj_id[1] !== objs[i-1, j].obj_id[1]) || 
-            #     (objs[i, j].obj_id[1] !== objs[i, j-1].obj_id[1]) ||
-            #     (objs[i, j].obj_id[1] !== objs[i-1, j-1].obj_id[1]) 
-            #     # edge detected 
-            #     edge = true
-            # end 
     
             if edge
                 center = (i, j)
@@ -365,11 +359,88 @@ function edge_detection!(
     return mask
 end
 
+function determine_conv_matrix(conv_type)
+
+    if conv_type == "box_blur_3"
+        conv = Matrix{Int}([
+            1 1 1;
+            1 1 1;
+            1 1 1
+        ]) * (1/9)
+    elseif conv_type == "box_blur_5"
+        conv = Matrix{Int}([
+            1 1 1 1 1;
+            1 1 1 1 1;
+            1 1 1 1 1;
+            1 1 1 1 1;
+            1 1 1 1 1;
+        ]) * (1/25)
+    elseif conv_type == "gaussian_blur_3"
+        conv = Matrix{Int}([
+            1 2 1;
+            2 4 2;
+            1 2 1
+        ]) * (1/16)
+    elseif conv_type == "gaussian_blur_5"
+        conv = Matrix{Int}([
+            1 4 6 4 1;
+            4 16 24 16 4;
+            6 24 36 24 6;
+            4 16 24 16 4;
+            1 4 6 4 1
+        ]) * (1/256)
+    elseif conv_type == "edge_detect_1"
+        conv = Matrix{Int}([
+            0 -1  0;
+           -1  4 -1;
+            0 -1  0
+        ]) * (1/4)
+    elseif conv_type == "edge_detect_2"
+        conv = Matrix{Int}([
+           -1 -1 -1;
+           -1  8 -1;
+           -1 -1 -1
+        ]) * (1/8)
+    end
+    
+
+    return conv
+end
+
+# Rays.blur("conv_imgs/treebranch_source.jpg", "conv_imgs/treebranch_blur.jpg", "box_blur_3")
+function blur(infile::String, outfile::String, conv::String)
+    # apply bluring to an image using convolutions
+    # 1. Gaussian
+    # 2. Blocky 
+    img = load(infile)
+    canvas = reinterpret(RGB{N0f8}, img)
+    width, height = size(canvas)
+
+    conv_matrix = determine_conv_matrix(conv)
+    CX, CY = size(conv_matrix)
+    cx, cy = Int((CX-1)/2), Int((CY-1)/2)
+    println(conv_matrix)
+
+    # pad by 0
+    pad_canvas = fill(RGB{Float32}(1,1,1), width + 2*cx, height + 2*cy)
+    println(size(pad_canvas))
+    println(size(canvas))
+    pad_canvas[1+cx : end-cx, 1+cy : end-cy] .= canvas
+
+    for w in 1+cx : width+cx
+        for h in 1+cy : height+cy
+            subset = pad_canvas[w-cx : w+cx, h-cy : h+cy]
+            convolution = abs.(sum(conv_matrix .* subset))
+            canvas[w-cx, h-cy] = convolution
+        end
+    end
+
+    save(outfile, canvas)
+end
+
 # Main loop:
 function main(scene, camera, height, width, outfile, 
                 aa_mode=0, aa_samples=1)
-    aa_mode = 0
-    aa_samples = 1
 
     # get the requested scene and camera
     scene = TestScenes.get_scene(scene)
