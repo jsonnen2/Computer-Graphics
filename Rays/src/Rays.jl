@@ -403,7 +403,6 @@ function determine_conv_matrix(conv_type)
         ]) * (1/8)
     end
     
-
     return conv
 end
 
@@ -419,14 +418,12 @@ function blur(infile::String, outfile::String, conv::String)
     conv_matrix = determine_conv_matrix(conv)
     CX, CY = size(conv_matrix)
     cx, cy = Int((CX-1)/2), Int((CY-1)/2)
-    println(conv_matrix)
 
     # pad by 0
     pad_canvas = fill(RGB{Float32}(1,1,1), width + 2*cx, height + 2*cy)
-    println(size(pad_canvas))
-    println(size(canvas))
     pad_canvas[1+cx : end-cx, 1+cy : end-cy] .= canvas
 
+    # apply convolution
     for w in 1+cx : width+cx
         for h in 1+cy : height+cy
             subset = pad_canvas[w-cx : w+cx, h-cy : h+cy]
