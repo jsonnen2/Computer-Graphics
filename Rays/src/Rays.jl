@@ -12,7 +12,7 @@ using FileIO
 using Images
 using StaticArrays
 using LinearAlgebra
-using Images
+using Images # loading images for convolutional filtering
 
 push!(LOAD_PATH, pwd())
 include("GfxBase.jl")
@@ -359,87 +359,7 @@ function edge_detection!(
     return mask
 end
 
-function determine_conv_matrix(conv_type)
-
-    if conv_type == "box_blur_3"
-        conv = Matrix{Int}([
-            1 1 1;
-            1 1 1;
-            1 1 1
-        ]) * (1/9)
-    elseif conv_type == "box_blur_5"
-        conv = Matrix{Int}([
-            1 1 1 1 1;
-            1 1 1 1 1;
-            1 1 1 1 1;
-            1 1 1 1 1;
-            1 1 1 1 1;
-        ]) * (1/25)
-    elseif conv_type == "gaussian_blur_3"
-        conv = Matrix{Int}([
-            1 2 1;
-            2 4 2;
-            1 2 1
-        ]) * (1/16)
-    elseif conv_type == "gaussian_blur_5"
-        conv = Matrix{Int}([
-            1 4 6 4 1;
-            4 16 24 16 4;
-            6 24 36 24 6;
-            4 16 24 16 4;
-            1 4 6 4 1
-        ]) * (1/256)
-    elseif conv_type == "edge_detect_1"
-        conv = Matrix{Int}([
-            0 -1  0;
-           -1  4 -1;
-            0 -1  0
-        ]) * (1/4)
-    elseif conv_type == "edge_detect_2"
-        conv = Matrix{Int}([
-           -1 -1 -1;
-           -1  8 -1;
-           -1 -1 -1
-        ]) * (1/8)
-    end
-    
-    return conv
-end
-
-# Rays.blur("conv_imgs/treebranch_source.jpg", "conv_imgs/treebranch_blur.jpg", "box_blur_3")
-function blur(infile::String, outfile::String, conv::String)
-    # apply bluring to an image using convolutions
-    # 1. Gaussian
-    # 2. Blocky 
-    # 3. Edge Detection
-
-    # load image
-    img = load(infile)
-    canvas = reinterpret(RGB{N0f8}, img)
-    width, height = size(canvas)
-
-    # load convolution matrix & store size
-    conv_matrix = determine_conv_matrix(conv)
-    CX, CY = size(conv_matrix)
-    cx, cy = Int((CX-1)/2), Int((CY-1)/2)
-
-    # pad by 0
-    pad_canvas = fill(RGB{Float32}(1,1,1), width + 2*cx, height + 2*cy)
-    pad_canvas[1+cx : end-cx, 1+cy : end-cy] .= canvas
-
-    # apply convolution
-    for w in 1+cx : width+cx
-        for h in 1+cy : height+cy
-            subset = pad_canvas[w-cx : w+cx, h-cy : h+cy]
-            convolution = abs.(sum(conv_matrix .* subset))
-            canvas[w-cx, h-cy] = convolution
-        end
-    end
-
-    save(outfile, canvas)
-end
-
-# Main loop:
+# Rays.main(7, 1, 300, 300, "results/bunny.png")
 function main(scene, camera, height, width, outfile, 
                 aa_mode=0, aa_samples=1)
 
@@ -505,7 +425,7 @@ function main(scene, camera, height, width, outfile,
     # Determine edges
     ##############
     if (aa_mode < 4)
-        mask = edge_detection!(objs, 0.0, canvas, true)
+        mask = edge_detection!(objs, 1.0, canvas, true)
     end
 
     #########################
@@ -551,6 +471,194 @@ function main(scene, camera, height, width, outfile,
     # clamp canvas to valid range:
     clamp01!(canvas)
     save(outfile, canvas)
+end
+
+function determine_conv_matrix(conv_type)
+
+    # box blur convolution filter for any odd size
+    if startswith(conv_type, "box_blur_")
+        m = match(r"^box_blur_(\d+)", conv_type)
+        conv_size = parse(Int, m.captures[1])
+        if conv_size % 2 == 0 || conv_size < 0
+            error("You must select an odd, positive value for box blur.")
+        end
+        conv = fill(1, conv_size, conv_size) * (1 / (conv_size*conv_size))
+    # gaussian blur convolution filter for any odd size
+    elseif startswith(conv_type, "gaussian_blur_")
+        m = match(r"^gaussian_blur_(\d+)", conv_type)
+        conv_size = parse(Int, m.captures[1])
+        if conv_size % 2 == 0 || conv_size < 0
+            error("You must select an odd, positive value for gaussian blur.")
+        end
+        conv = fill(0.0, conv_size, conv_size)
+        for i in 1:conv_size
+            for j in 1:conv_size
+                x, y = (i - (conv_size-1)/2 - 1), (j - (conv_size-1)/2 - 1)
+                conv[i, j] = (1 / (2*pi)) * exp(-1/2(x*x + y*y))
+            end
+        end
+    elseif conv_type == "edge_detect_1"
+        conv = Matrix{Int}([
+            0 -1  0;
+            -1  4 -1;
+            0 -1  0
+        ]) * (1/4)
+    elseif conv_type == "edge_detect_2"
+        conv = Matrix{Int}([
+            -1 -1 -1;
+            -1  8 -1;
+            -1 -1 -1
+        ]) * (1/8)
+    else
+        error(conv_type, " illegal convolution type")
+    end
+    
+    return conv
+end
+
+function apply_convolution!(canvas, conv_type::String)
+    # fetch convolution matrix
+    conv_matrix = determine_conv_matrix(conv_type)
+
+    width, height = size(canvas)
+    CX, CY = size(conv_matrix)
+    cx, cy = Int((CX-1)/2), Int((CY-1)/2)
+
+    # pad by 0
+    pad_canvas = fill(RGB{Float32}(1,1,1), width + 2*cx, height + 2*cy)
+    pad_canvas[1+cx : end-cx, 1+cy : end-cy] .= canvas
+
+    # apply convolution
+    for w in 1+cx : width+cx
+        for h in 1+cy : height+cy
+            subset = pad_canvas[w-cx : w+cx, h-cy : h+cy]
+            convolution = abs.(sum(conv_matrix .* subset))
+            canvas[w-cx, h-cy] = convolution
+        end
+    end
+end
+
+# Define a brightness function
+function brightness(c::RGB{Float32})
+    return c.r + c.g + c.b
+end
+
+function max_convolve!(canvas, kernel_size::Int)
+    width, height = size(canvas)
+    cx, cy = kernel_size, kernel_size
+
+    # pad by 0
+    pad_canvas = fill(RGB{Float32}(1,1,1), width + 2*cx, height + 2*cy)
+    pad_canvas[1+cx : end-cx, 1+cy : end-cy] .= canvas
+
+    # apply convolution
+    for w in 1+cx : width+cx
+        for h in 1+cy : height+cy
+            subset = pad_canvas[w-cx : w+cx, h-cy : h+cy]
+            canvas[w-cx, h-cy] = maximum(c -> brightness(c), subset)
+        end
+    end
+end
+
+
+# Rays.blur("conv_imgs/treebranch_source.jpg", "conv_imgs/treebranch_blur.jpg", "box_blur_3")
+# Rays.blur("gsplat_imgs/ohio.jpg", "gsplat_imgs/ohio_splat.jpg", "edge_detect_1")
+function blur(infile::String, outfile::String, conv::String)
+    # apply bluring to an image using convolutions
+    # 1. Gaussian
+    # 2. Blocky 
+    # 3. Edge Detection
+
+    # load image
+    img = load(infile)
+    canvas = reinterpret(RGB{N0f8}, img)
+
+    # load convolution matrix & store size
+    conv_matrix = determine_conv_matrix(conv)
+    apply_convolution!(canvas, conv_matrix)
+
+    save(outfile, canvas)
+end
+
+mutable struct gsplat 
+    center::Vector{Int}
+    covar::Matrix{Float32}
+    scale::Float32
+    color::RGB{Float32}
+    alpha::Float32
+end
+
+function sample_gsplats(canvas::Matrix{ColorTypes.RGB{Float32}}, num_samples::Int)
+    # random sampling over my canvas 
+    height, width = size(canvas)
+    gsplat_bag = Vector{gsplat}()
+    scale = 4
+
+    for n in 1:num_samples
+        cx, cy = rand(1:width), rand(1:height)
+        covar = Matrix{Float32}([
+            1 0;
+            0 1;
+        ])
+        color = canvas[cy, cx]
+        alpha = max(color.r, color.g, color.b) / 1.0
+        color /= alpha
+
+        push!(gsplat_bag, gsplat([cx, cy], covar, scale, color, alpha))
+    end
+
+    return gsplat_bag
+end
+
+function edit_scale!(gsplat_bag, eps)
+    for blob in gsplat_bag
+        blob.scale += rand(0 : eps)
+    end
+end
+
+function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
+    canvas = fill(RGB{Float32}(0,0,0), height, width)
+
+    for blob in gsplat_bag
+        cx, cy = blob.center
+        offset = Int(floor(0.5*sqrt(min(width, height))))
+
+        for h in max(1, cy-offset) : min(height, cy+offset)
+            for w in max(1, cx-offset) : min(width, cx+offset)
+
+                # Evaluate Gaussian
+                mean = [w, h] - blob.center
+                covariance = blob.covar ./ blob.scale
+                scale = 1 / (2*pi*sqrt(det(covariance)))
+                exponent = mean' * covariance * mean
+                g_xy = scale * exp(-1/2 * exponent)
+
+                color = g_xy .* blob.alpha .* blob.color 
+                canvas[h, w] += color
+            end
+        end
+    end
+    return canvas
+end
+
+# Rays.splat_main("gsplat_imgs/ohio.jpg", "gsplat_imgs/ohio_splat.jpg", 5000)
+function splat_main(infile::String, outfile::String, num_samples::Int)
+
+    # load image
+    img = load(infile)
+    # canvas = reinterpret(RGB{N0f8}, img)
+    canvas = float.(img)
+    canvas = convert(Matrix{RGB{Float32}}, canvas)
+    height, width = size(canvas)
+
+    gsplat_bag = sample_gsplats(canvas, num_samples)
+    edit_scale!(gsplat_bag, 4)
+    canvas = render_gsplat(gsplat_bag, height, width)
+    # apply box blurring
+    # max_convolve!(canvas, 5)
+
+    save(outfile, canvas)
+
 end
 
 end # module Rays

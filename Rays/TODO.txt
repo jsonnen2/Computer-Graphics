@@ -1,0 +1,5 @@
+Parameters to add to Rays.main()
+- Locality param 
+- Toggle shadow edge detect
+- Toggle edge detect
+- AA strategy: random, uniform, stratified
