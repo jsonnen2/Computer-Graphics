@@ -2,7 +2,7 @@ module Lights
 
 import LinearAlgebra.normalize
 
-export Light, DirectionalLight, AmbientLight, PointLight
+export Light, DirectionalLight, AmbientLight, PointLight, AreaLight
 export light_direction
 
 #push!(LOAD_PATH, pwd())
@@ -22,12 +22,21 @@ struct PointLight <: Light
     position::Vec3
 end
 
+struct AreaLight <: Light
+    intensity
+    position::Vec3
+    vec_a::Vec3
+    vec_b::Vec3
+end
+
 """ Calculate the direction of a given light source from the position point """
 function light_direction(light::Light, point::Vec3)
     if (typeof(light) == DirectionalLight) # Return light direction of a Directional light
         return light_direction(light::DirectionalLight, point)
     elseif (typeof(light) == PointLight) # Return light direction of a Point light
         return light_direction(light::PointLight, point)
+    elseif (typeof(light) == AreaLight)
+        return light_direction(light::AreaLight, point)
     end
 end
 
@@ -44,8 +53,12 @@ end
 # point source: direction from the point to the position, normalized
 function light_direction(light::PointLight, point::Vec3)
     return normalize(light.position .- point)
-
 end
+
+function light_direction(light::AreaLight, point::Vec3, lightPoint::Vec3)
+    return normalize(lightPoint .- point)
+end
+
 ###############
 # END TODO 4a #
 ###############

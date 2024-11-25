@@ -207,7 +207,7 @@ end
 Determine the color contribution of the given light along the given ray.
 Color depends on the material, the shading model (shader), properties of the intersection 
 given in hitrec, """
-function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, light, scene)
+function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, light::Union{PointLight, DirectionalLight}, scene)
     ###########
     # TODO 4b #
     ###########
@@ -230,7 +230,7 @@ function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, l
 end
 
 """ Blinn-Phong surface shading """
-function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, light, scene)
+function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, light::Union{PointLight, DirectionalLight}, scene)
     ###########
     # TODO 4d #
     ###########
@@ -259,6 +259,33 @@ function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, l
     #############
 end
 
+function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, light::AreaLight, scene)
+    dim = 5
+    surfaceNormal = hitrec.normal # Get surface normal
+    I = light.intensity / dim^2 # Get light intensity
+    diffuseColor = get_diffuse(material, hitrec.uv) # Get diffuse color
+
+    c = RGB(0.0, 0.0, 0.0)
+    r = []
+    for p in 0:dim-1
+        for q in 0:dim-1
+            light_sample = light.position + light.vec_a * (p+rand(Float32))/dim + light.vec_b * (q+rand(Float32))/dim
+            push!(r, Vec3(light_sample[1], light_sample[2], light_sample[3]))
+        end
+    end
+
+    for i in 1:dim^2
+        if (!is_shadowed(scene, light, hitrec.intersection, r[i]))
+            lightDirection = normalize(light_direction(light, hitrec.intersection, r[i])) # Get light direction and normalize It
+            
+            # Calculate specular reflection using the diffuse and specular components
+            c += diffuseColor * I * max(0, dot(surfaceNormal, lightDirection))
+        end
+    end
+
+    return c, 0
+end
+
 
 """ Determine whether point is in shadow wrt light """
 ###########
@@ -282,6 +309,15 @@ function is_shadowed(scene, light::PointLight, point::Vec3)
     tmax = norm(lightDirection) # Get maximum distance
     rayHit = Rays.closest_intersect(scene.objects, shadowRay, tmin, tmax) # Calculate closest intersection of rays
     return rayHit !== nothing # Return true/false if the shadowed ray hits some object
+end
+
+function is_shadowed(scene, light::AreaLight, point::Vec3, lightPoint::Vec3)
+    lightDirection = lightPoint - point
+    shadowRay = Ray(point, normalize(lightDirection))
+    tmin = 1e-8
+    tmax = norm(lightDirection)
+    rayHit = Rays.closest_intersect(scene.objects, shadowRay, tmin, tmax)
+    return rayHit !== nothing
 end
 
 
