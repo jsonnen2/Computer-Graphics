@@ -570,7 +570,6 @@ end
 
 
 # Rays.blur("conv_imgs/treebranch_source.jpg", "conv_imgs/treebranch_blur.jpg", "box_blur_3")
-# Rays.blur("gsplat_imgs/ohio.jpg", "gsplat_imgs/ohio_splat.jpg", "edge_detect_1")
 function blur(infile::String, outfile::String, conv::String)
     # apply bluring to an image using convolutions
     # 1. Gaussian
@@ -579,7 +578,10 @@ function blur(infile::String, outfile::String, conv::String)
 
     # load image
     img = load(infile)
-    canvas = reinterpret(RGB{N0f8}, img)
+    # canvas = reinterpret(RGB{N0f8}, img)
+    canvas = float.(img)
+    canvas = convert(Matrix{RGB{Float32}}, canvas)
+    height, width = size(canvas)
 
     # load convolution matrix & store size
     conv_matrix = determine_conv_matrix(conv)
@@ -593,9 +595,9 @@ end
 mutable struct gsplat 
     center::Vector{Int}
     color::RGB{Float32}
-    sx::Float32
-    sy::Float32
-    alpha::Float32
+    stretchx::Float32
+    stretchy::Float32
+    luminance::Float32
 end
 
 function sample_gsplats(canvas::Matrix{ColorTypes.RGB{Float32}}, num_samples::Int)
@@ -616,17 +618,32 @@ function sample_gsplats(canvas::Matrix{ColorTypes.RGB{Float32}}, num_samples::In
     return gsplat_bag
 end
 
-function edit_scale!(gsplat_bag, eps)
-    # adds noise to the scale parameter
+function render_KNN(gsplat_bag::Vector{gsplat}, height::Int, width::Int, k::Int)
+
+    store_distance = fill(0.0, k, height, width)
+    store_color = fill(RGB{Float32}(0,0,0), k, height, width)
+
     for blob in gsplat_bag
-        blob.sx += rand(0 : eps)
-        blob.sy += rand(0 : eps)
+        cx, cy = blob.center
+        # specify a probability theshold for the Gaussian 
+        # only evaluate points which are "close enough" to the center
+        p = 1e-3
+        offset = Int(round(sqrt(-max(blob.sx, blob.sy) * log(p))))
+
+        for h in max(1, cy-offset) : min(height, cy+offset)
+            for w in max(1, cx-offset) : min(width, cx+offset)
+
+                # calculate distance b/w blob.center & (h, w)
+                # store color at appropriate distance ranking
+            end
+        end
     end
+    return canvas
 end
 
-function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int; render_type = "gsplat")
+
+function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
     canvas = fill(RGB{Float32}(0,0,0), height, width)
-    store_G = fill(0.0, height, width)
     
     for blob in gsplat_bag
         cx, cy = blob.center
@@ -642,21 +659,31 @@ function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int; rend
                 x = w - blob.center[1]
                 y = h - blob.center[2]
                 scale = (blob.sx * blob.sy) / (2*pi)
-                g_xy = scale * exp(-1/2 * ((x / blob.sx)^2 + (y / blob.sy)^2))
+                gauss = scale * exp(-1/2 * ((x / blob.sx)^2 + (y / blob.sy)^2))
 
-                if render_type == "gsplat"
-                    color = g_xy .* blob.alpha .* blob.color 
-                    canvas[h, w] += color
-                elseif render_type == "nearest"
-                    if g_xy > store_G[h, w]
-                        store_G[h, w] = g_xy
-                        canvas[h, w] = blob.alpha .* blob.color
-                    end
-                end
+                gauss = min(1, gauss)
+                color = gauss .* blob.alpha .* blob.color 
+                canvas[h, w] += color
+
             end
         end
     end
     return canvas
+end
+
+
+function update_splats!(gsplat_bag, LR; stretchx=0, stretchy=0, luminance=0)
+    # adds noise to the scale parameter
+    for blob in gsplat_bag
+        blob.stretchx += LR * stretchx
+        blob.stretchy += LR * stretchy 
+        blob.luminance += LR * luminance 
+    end
+end
+
+
+function loss_MSE(forward, ground_truth)
+    return 0.5 * (forward .- ground_truth)^2
 end
 
 
