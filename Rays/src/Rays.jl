@@ -489,11 +489,14 @@ function main(scene, camera, height, width, outfile,
     clamp01!(canvas)
     save(outfile, canvas)
 end
-
 function determine_conv_matrix(conv_type)
 
+    if startswith(conv_type, "brighten_")
+        m = match(r"^brighten_([+-]?\d*\.?\d+)", conv_type)
+        scale = parse(Float32, m.captures[1])
+        conv = fill(scale, 1, 1)
     # box blur convolution filter for any odd size
-    if startswith(conv_type, "box_blur_")
+    elseif startswith(conv_type, "box_blur_")
         m = match(r"^box_blur_(\d+)", conv_type)
         conv_size = parse(Int, m.captures[1])
         if conv_size % 2 == 0 || conv_size < 0
@@ -514,6 +517,7 @@ function determine_conv_matrix(conv_type)
                 conv[i, j] = (1 / (2*pi)) * exp(-1/2(x*x + y*y))
             end
         end
+        conv ./= sum(conv)
     elseif conv_type == "edge_detect_1"
         conv = Matrix{Int}([
             0 -1  0;
@@ -533,7 +537,7 @@ function determine_conv_matrix(conv_type)
     return conv
 end
 
-function apply_convolution!(canvas, conv_type::String)
+function apply_convolution!(canvas, conv_type::String; mask = trues(size(canvas)))
     # fetch convolution matrix
     conv_matrix = determine_conv_matrix(conv_type)
 
@@ -548,9 +552,12 @@ function apply_convolution!(canvas, conv_type::String)
     # apply convolution
     for w in 1+cx : width+cx
         for h in 1+cy : height+cy
-            subset = pad_canvas[w-cx : w+cx, h-cy : h+cy]
-            convolution = abs.(sum(conv_matrix .* subset))
-            canvas[w-cx, h-cy] = convolution
+            # apply convolution to the subset specified by mask
+            if mask[w-cx, h-cy]
+                subset = pad_canvas[w-cx : w+cx, h-cy : h+cy]
+                convolution = abs.(sum(conv_matrix .* subset))
+                canvas[w-cx, h-cy] = convolution
+            end
         end
     end
 end
@@ -579,7 +586,6 @@ end
 
 
 # Rays.blur("conv_imgs/treebranch_source.jpg", "conv_imgs/treebranch_blur.jpg", "box_blur_3")
-# Rays.blur("gsplat_imgs/ohio.jpg", "gsplat_imgs/ohio_splat.jpg", "edge_detect_1")
 function blur(infile::String, outfile::String, conv::String)
     # apply bluring to an image using convolutions
     # 1. Gaussian
@@ -588,7 +594,10 @@ function blur(infile::String, outfile::String, conv::String)
 
     # load image
     img = load(infile)
-    canvas = reinterpret(RGB{N0f8}, img)
+    # canvas = reinterpret(RGB{N0f8}, img)
+    canvas = float.(img)
+    canvas = convert(Matrix{RGB{Float32}}, canvas)
+    height, width = size(canvas)
 
     # load convolution matrix & store size
     conv_matrix = determine_conv_matrix(conv)
@@ -597,68 +606,104 @@ function blur(infile::String, outfile::String, conv::String)
     save(outfile, canvas)
 end
 
+# My gsplats assume x and y are independent. 
+# The covariance can scale by a factor in the x and y independently.
 mutable struct gsplat 
     center::Vector{Int}
-    covar::Matrix{Float32}
-    scale::Float32
     color::RGB{Float32}
-    alpha::Float32
+    stretchx::Float32
+    stretchy::Float32
+    luminance::Float32
 end
 
 function sample_gsplats(canvas::Matrix{ColorTypes.RGB{Float32}}, num_samples::Int)
-    # random sampling over my canvas 
+    
     height, width = size(canvas)
     gsplat_bag = Vector{gsplat}()
-    scale = 4
+    scale = 2
 
     for n in 1:num_samples
         cx, cy = rand(1:width), rand(1:height)
-        covar = Matrix{Float32}([
-            1 0;
-            0 1;
-        ])
         color = canvas[cy, cx]
         alpha = max(color.r, color.g, color.b) / 1.0
         color /= alpha
 
-        push!(gsplat_bag, gsplat([cx, cy], covar, scale, color, alpha))
+        push!(gsplat_bag, gsplat([cx, cy], color, scale, scale, alpha/100))
     end
 
     return gsplat_bag
 end
 
-function edit_scale!(gsplat_bag, eps)
-    for blob in gsplat_bag
-        blob.scale += rand(0 : eps)
-    end
-end
+function render_KNN(gsplat_bag::Vector{gsplat}, height::Int, width::Int, k::Int)
 
-function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
-    canvas = fill(RGB{Float32}(0,0,0), height, width)
+    store_distance = fill(0.0, k, height, width)
+    store_color = fill(RGB{Float32}(0,0,0), k, height, width)
 
     for blob in gsplat_bag
         cx, cy = blob.center
-        offset = Int(floor(0.5*sqrt(min(width, height))))
+        # specify a probability theshold for the Gaussian 
+        # only evaluate points which are "close enough" to the center
+        p = 1e-3
+        offset = Int(round(sqrt(-max(blob.sx, blob.sy) * log(p))))
 
         for h in max(1, cy-offset) : min(height, cy+offset)
             for w in max(1, cx-offset) : min(width, cx+offset)
 
-                # Evaluate Gaussian
-                mean = [w, h] - blob.center
-                covariance = blob.covar ./ blob.scale
-                scale = 1 / (2*pi*sqrt(det(covariance)))
-                exponent = mean' * covariance * mean
-                g_xy = scale * exp(-1/2 * exponent)
-
-                color = g_xy .* blob.alpha .* blob.color 
-                canvas[h, w] += color
+                # calculate distance b/w blob.center & (h, w)
+                # store color at appropriate distance ranking
             end
         end
     end
     return canvas
 end
 
-# Rays.splat_main("gsplat_imgs/ohio.jpg", "gsplat_imgs/ohio_splat.jpg", 5000)
+
+function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
+    canvas = fill(RGB{Float32}(0,0,0), height, width)
+    
+    for blob in gsplat_bag
+        cx, cy = blob.center
+        # specify a probability theshold for the Gaussian 
+        # only evaluate points which are "close enough" to the center
+        p = 1e-3
+        offset = Int(round(sqrt(-max(blob.sx, blob.sy) * log(p))))
+
+        for h in max(1, cy-offset) : min(height, cy+offset)
+            for w in max(1, cx-offset) : min(width, cx+offset)
+
+                # Evaluate Gaussian
+                x = w - blob.center[1]
+                y = h - blob.center[2]
+                scale = (blob.sx * blob.sy) / (2*pi)
+                gauss = scale * exp(-1/2 * ((x / blob.sx)^2 + (y / blob.sy)^2))
+
+                gauss = min(1, gauss)
+                color = gauss .* blob.alpha .* blob.color 
+                canvas[h, w] += color
+
+            end
+        end
+    end
+    return canvas
+end
+
+
+function update_splats!(gsplat_bag, LR; stretchx=0, stretchy=0, luminance=0)
+    # adds noise to the scale parameter
+    for blob in gsplat_bag
+        blob.stretchx += LR * stretchx
+        blob.stretchy += LR * stretchy 
+        blob.luminance += LR * luminance 
+    end
+end
+
+
+function loss_MSE(forward, ground_truth)
+    return 0.5 * (forward .- ground_truth)^2
+end
+
+
+# Rays.splat_main("gsplat_imgs/landscape.jpg", "gsplat_imgs/landscape_splat.jpg", 5000)
 function splat_main(infile::String, outfile::String, num_samples::Int)
 
     # load image
@@ -668,15 +713,27 @@ function splat_main(infile::String, outfile::String, num_samples::Int)
     canvas = convert(Matrix{RGB{Float32}}, canvas)
     height, width = size(canvas)
 
-    gsplat_bag = sample_gsplats(canvas, num_samples)
+    # generate a Matrix to define 
+    mask_rgb = deepcopy(canvas)
+    apply_convolution!(mask_rgb, "edge_detect_2")
+    apply_convolution!(mask_rgb, "box_blur_7")
+    apply_convolution!(mask_rgb, "brighten_5.5")
+    brightness_mask = map(c -> brightness(c), mask_rgb)
+    mask_bool = map(c -> brightness(c) > 0.3, mask_rgb)
+
+    # Gaussian Splatting
+    @time begin
+        gsplat_bag = sample_gsplats(canvas, num_samples)
+    end
     edit_scale!(gsplat_bag, 4)
-    canvas = render_gsplat(gsplat_bag, height, width)
-    # apply box blurring
-    # max_convolve!(canvas, 5)
+    @time begin
+        canvas = render_gsplat(gsplat_bag, height, width)
+    end
+
+    # apply_convolution!(canvas, "gaussian_blur_15"; mask=mask_bool)
 
     save(outfile, canvas)
 
 end
 
-end # module Rays
-
+end
