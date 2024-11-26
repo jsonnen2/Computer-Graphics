@@ -207,7 +207,7 @@ end
 Determine the color contribution of the given light along the given ray.
 Color depends on the material, the shading model (shader), properties of the intersection 
 given in hitrec, """
-function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, light, scene)
+function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, light::Union{PointLight, DirectionalLight}, scene)
     ###########
     # TODO 4b #
     ###########
@@ -230,7 +230,7 @@ function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, l
 end
 
 """ Blinn-Phong surface shading """
-function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, light, scene)
+function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, light::Union{PointLight, DirectionalLight}, scene)
     ###########
     # TODO 4d #
     ###########
@@ -259,6 +259,33 @@ function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, l
     #############
 end
 
+function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, light::AreaLight, scene)
+    dim = 5
+    surfaceNormal = hitrec.normal # Get surface normal
+    I = light.intensity / dim^2 # Get light intensity
+    diffuseColor = get_diffuse(material, hitrec.uv) # Get diffuse color
+
+    c = RGB(0.0, 0.0, 0.0)
+    r = []
+    for p in 0:dim-1
+        for q in 0:dim-1
+            light_sample = light.position + light.vec_a * (p+rand(Float32))/dim + light.vec_b * (q+rand(Float32))/dim
+            push!(r, Vec3(light_sample[1], light_sample[2], light_sample[3]))
+        end
+    end
+
+    for i in 1:dim^2
+        if (!is_shadowed(scene, light, hitrec.intersection, r[i]))
+            lightDirection = normalize(light_direction(light, hitrec.intersection, r[i])) # Get light direction and normalize It
+            
+            # Calculate specular reflection using the diffuse and specular components
+            c += diffuseColor * I * max(0, dot(surfaceNormal, lightDirection))
+        end
+    end
+
+    return c, 0
+end
+
 
 """ Determine whether point is in shadow wrt light """
 ###########
@@ -282,6 +309,15 @@ function is_shadowed(scene, light::PointLight, point::Vec3)
     tmax = norm(lightDirection) # Get maximum distance
     rayHit = Rays.closest_intersect(scene.objects, shadowRay, tmin, tmax) # Calculate closest intersection of rays
     return rayHit !== nothing # Return true/false if the shadowed ray hits some object
+end
+
+function is_shadowed(scene, light::AreaLight, point::Vec3, lightPoint::Vec3)
+    lightDirection = lightPoint - point
+    shadowRay = Ray(point, normalize(lightDirection))
+    tmin = 1e-8
+    tmax = norm(lightDirection)
+    rayHit = Rays.closest_intersect(scene.objects, shadowRay, tmin, tmax)
+    return rayHit !== nothing
 end
 
 
@@ -359,6 +395,39 @@ function edge_detection!(
     return mask
 end
 
+function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
+    tmin = 1
+    tmax = Inf
+    color = RGB{Float32}(0,0,0)
+    # Uniform AA
+    if (aa_mode == 1)
+        for p in 0:aa_samples-1
+            for q in 0:aa_samples-1
+                view_ray = Cameras.pixel_to_ray(camera, i + (p+0.5)/aa_samples, j + (q+0.5)/aa_samples)
+                sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
+                color = color + sub_px_color
+            end
+        end
+    # Random AA
+    elseif (aa_mode == 2)
+        for p in 1:aa_samples^2
+            view_ray = Cameras.pixel_to_ray(camera, i + rand(Float32), j + rand(Float32))
+            sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
+            color = color + sub_px_color
+        end
+    # Stratified AA
+    elseif (aa_mode == 3)
+        for p in 0:aa_samples-1
+            for q in 0:aa_samples-1
+                view_ray = Cameras.pixel_to_ray(camera, i + (p+rand(Float32))/aa_samples, j + (q+rand(Float32))/aa_samples)
+                sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
+                color = color + sub_px_color
+            end
+        end
+    end
+    return color / aa_samples^2
+end
+
 # Rays.main(7, 1, 300, 300, "results/bunny.png")
 function main(scene, camera, height, width, outfile, 
                 aa_mode=0, aa_samples=1)
@@ -380,40 +449,15 @@ function main(scene, camera, height, width, outfile,
     #   for each pixel, get a viewing ray from the camera
     #   then call traceray to determine its color
     #
-    tmin = 1
-    tmax = Inf
     for i in 1:height
         for j in 1:width
-            color = RGB{Float32}(0,0,0)
-            # Uniform AA (Full Image)
-            if (aa_mode == 4)
-                for p in 0:aa_samples-1
-                    for q in 0:aa_samples-1
-                        view_ray = Cameras.pixel_to_ray(camera, i + (p+0.5)/aa_samples, j + (q+0.5)/aa_samples)
-                        sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
-                        color = color + sub_px_color
-                    end
-                end
-                canvas[i, j] = color / aa_samples ^ 2
-            # Random AA (Full Image)
-            elseif (aa_mode == 5)
-                for p in 1:aa_samples^2
-                    view_ray = Cameras.pixel_to_ray(camera, i + rand(Float32), j + rand(Float32))
-                    sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
-                    color = color + sub_px_color
-                end
-                canvas[i, j] = color / aa_samples ^ 2
-            # Stratified AA (Full Image)
-            elseif (aa_mode == 6)
-                for p in 0:aa_samples-1
-                    for q in 0:aa_samples-1
-                        view_ray = Cameras.pixel_to_ray(camera, i + (p+rand(Float32))/aa_samples, j + (q+rand(Float32))/aa_samples)
-                        sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
-                        color = color + sub_px_color
-                    end
-                end
-                canvas[i, j] = color / aa_samples ^ 2
+            # Full-image AA
+            if (aa_mode > 3)
+                canvas[i, j] = aa_get_px_color(i, j, scene, camera, aa_mode - 3, aa_samples)
+            # No AA or edge-only AA
             else
+                tmin = 1
+                tmax = Inf
                 view_ray = Cameras.pixel_to_ray(camera, i, j)
                 color, edge_stor = traceray(scene, view_ray, tmin, tmax)
                 canvas[i, j] = color
@@ -435,34 +479,7 @@ function main(scene, camera, height, width, outfile,
         for i in 1:height
             for j in 1:width
                 if (mask[i, j] == true)
-                    color = RGB{Float32}(0, 0, 0)
-                    # Uniform sampling
-                    if (aa_mode == 1)
-                        for p in 0:aa_samples-1
-                            for q in 0:aa_samples-1
-                                view_ray = Cameras.pixel_to_ray(camera, i + (p + 0.5) / aa_samples, j + (q + 0.5) / aa_samples)
-                                sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
-                                color = color + sub_px_color
-                            end
-                        end
-                        # Random sampling
-                    elseif (aa_mode == 2)
-                        for p in 1:aa_samples^2
-                            view_ray = Cameras.pixel_to_ray(camera, i + rand(Float32), j + rand(Float32))
-                            sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
-                            color = color + sub_px_color
-                        end
-                        # Stratified sampling 
-                    elseif (aa_mode == 3)
-                        for p in 0:aa_samples-1
-                            for q in 0:aa_samples-1
-                                view_ray = Cameras.pixel_to_ray(camera, i + (p + rand(Float32)) / aa_samples, j + (q + rand(Float32)) / aa_samples)
-                                sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
-                                color = color + sub_px_color
-                            end
-                        end
-                    end
-                    canvas[i, j] = color / aa_samples^2
+                    canvas[i, j] = aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
                 end
             end
         end
@@ -472,7 +489,6 @@ function main(scene, camera, height, width, outfile,
     clamp01!(canvas)
     save(outfile, canvas)
 end
-
 function determine_conv_matrix(conv_type)
 
     if startswith(conv_type, "brighten_")
@@ -551,6 +567,7 @@ function brightness(c::RGB{Float32})
     return c.r + c.g + c.b
 end
 
+
 function max_convolve!(canvas, kernel_size::Int)
     width, height = size(canvas)
     cx, cy = kernel_size, kernel_size
@@ -590,17 +607,18 @@ function blur(infile::String, outfile::String, conv::String)
     save(outfile, canvas)
 end
 
-# My gsplats assume x and y are independent. 
-# The covariance can scale by a factor in the x and y independently.
+
+# My gsplats set x and y to be independent. 
 mutable struct gsplat 
-    center::Vector{Int}
+    center::SVector{2, Int}
     color::RGB{Float32}
-    stretchx::Float32
-    stretchy::Float32
+    scale_x::Float32
+    scale_y::Float32
     luminance::Float32
 end
 
-function sample_gsplats(canvas::Matrix{ColorTypes.RGB{Float32}}, num_samples::Int)
+
+function sample_gsplats(canvas::Matrix{RGB{Float32}}, num_samples::Int)
     
     height, width = size(canvas)
     gsplat_bag = Vector{gsplat}()
@@ -608,27 +626,30 @@ function sample_gsplats(canvas::Matrix{ColorTypes.RGB{Float32}}, num_samples::In
 
     for n in 1:num_samples
         cx, cy = rand(1:width), rand(1:height)
+        center = SVector{2, Int}(cx, cy)
+
         color = canvas[cy, cx]
-        alpha = max(color.r, color.g, color.b) / 1.0
+        alpha = max(color.r, color.g, color.b)
         color /= alpha
 
-        push!(gsplat_bag, gsplat([cx, cy], color, scale, scale, alpha/100))
+        push!(gsplat_bag, gsplat(center, color, scale, scale, alpha))
     end
 
     return gsplat_bag
 end
 
+
 function render_KNN(gsplat_bag::Vector{gsplat}, height::Int, width::Int, k::Int)
 
     store_distance = fill(0.0, k, height, width)
-    store_color = fill(RGB{Float32}(0,0,0), k, height, width)
+    store_color = fill(RGB{Float32}(0,0,0), k, height, width) # TODO: change storage
 
     for blob in gsplat_bag
         cx, cy = blob.center
         # specify a probability theshold for the Gaussian 
         # only evaluate points which are "close enough" to the center
         p = 1e-3
-        offset = Int(round(sqrt(-max(blob.sx, blob.sy) * log(p))))
+        offset = Int(round(sqrt(-max(blob.scale_x, blob.scale_y) * log(p))))
 
         for h in max(1, cy-offset) : min(height, cy+offset)
             for w in max(1, cx-offset) : min(width, cx+offset)
@@ -643,14 +664,16 @@ end
 
 
 function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
+
     canvas = fill(RGB{Float32}(0,0,0), height, width)
     
     for blob in gsplat_bag
-        cx, cy = blob.center
+        
         # specify a probability theshold for the Gaussian 
         # only evaluate points which are "close enough" to the center
         p = 1e-3
-        offset = Int(round(sqrt(-max(blob.sx, blob.sy) * log(p))))
+        offset = Int(round(sqrt(-max(blob.scale_x, blob.scale_y) * log(p))))
+        cx, cy = blob.center
 
         for h in max(1, cy-offset) : min(height, cy+offset)
             for w in max(1, cx-offset) : min(width, cx+offset)
@@ -658,11 +681,11 @@ function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
                 # Evaluate Gaussian
                 x = w - blob.center[1]
                 y = h - blob.center[2]
-                scale = (blob.sx * blob.sy) / (2*pi)
-                gauss = scale * exp(-1/2 * ((x / blob.sx)^2 + (y / blob.sy)^2))
+                scale = (blob.scale_x * blob.scale_y) / (2*pi)
+                gauss = scale * exp(-0.5 * ((x / blob.scale_x)^2 + (y / blob.scale_y)^2))
 
                 gauss = min(1, gauss)
-                color = gauss .* blob.alpha .* blob.color 
+                color = gauss .* blob.luminance .* blob.color 
                 canvas[h, w] += color
 
             end
@@ -672,18 +695,93 @@ function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
 end
 
 
-function update_splats!(gsplat_bag, LR; stretchx=0, stretchy=0, luminance=0)
-    # adds noise to the scale parameter
-    for blob in gsplat_bag
-        blob.stretchx += LR * stretchx
-        blob.stretchy += LR * stretchy 
-        blob.luminance += LR * luminance 
+function update_splats!(gsplat_bag, gradients; LR = 0.003)
+    # TODO: 
+    # unpack 3 gradients
+    # update each blob according to its gradient
+
+    for (idx, blob) in enumerate(gsplat_bag)
+        blob.luminance += LR * gradients[1][idx]
+        blob.scale_x += LR * gradients[2][idx]
+        blob.scale_y += LR * gradients[3][idx]
+
+        blob.luminance = clamp(blob.luminance, 0.0, 1.0)
+        blob.scale_x = clamp(blob.scale_x, 0.0, 10.0)
+        blob.scale_y = clamp(blob.scale_y, 0.0, 10.0)
     end
 end
 
 
-function loss_MSE(forward, ground_truth)
-    return 0.5 * (forward .- ground_truth)^2
+function calc_gradients(loss, gsplat_bag)
+    # calculate gradients for luminance, scale_x, scale_y
+    # for batched learning, pass in a subset of gsplat_bag and maintain a list of indices outside this method
+
+    height, width = size(loss)
+    grad_luminance = fill(0.0f0, size(gsplat_bag))
+    grad_scale_x = fill(0.0f0, size(gsplat_bag))
+    grad_scale_y = fill(0.0f0, size(gsplat_bag))
+
+    for (idx, blob) in enumerate(gsplat_bag)
+
+        cx, cy = blob.center
+        p = 1e-3
+        offset = Int(round(sqrt(-max(blob.scale_x, blob.scale_y) * log(p))))
+
+        for h in max(1, cy-offset) : min(height, cy+offset)
+            for w in max(1, cx-offset) : min(width, cx+offset)
+
+                x = w - blob.center[1]
+                y = h - blob.center[2]
+                scale = 1 / (2*pi)
+                gauss = scale * exp(-0.5 * ((x / blob.scale_x)^2 + (y / blob.scale_y)^2))
+
+                alpha = blob.scale_x * blob.scale_y 
+                sx = blob.scale_y * (1 + (x / blob.scale_x)^2)
+                sy = blob.scale_x * (1 + (y / blob.scale_y)^2)
+                
+                distance = loss[h,w].r * blob.color.r +
+                            loss[h,w].g * blob.color.g +
+                            loss[h,w].b * blob.color.b
+
+                grad_luminance[idx] += distance * gauss * alpha
+                grad_scale_x[idx] += distance * gauss * sx * blob.luminance
+                grad_scale_y[idx] += distance * gauss * sy * blob.luminance
+
+            end
+        end
+
+    end
+    return [grad_luminance, grad_scale_x, grad_scale_y]
+end
+
+# Rays.train_splat("gsplat_imgs/landscape.jpg", "gsplat_imgs/landscape_splat.jpg", 5000)
+function train_splat(infile::String, outfile::String, num_samples::Int)
+
+    # load image
+    img = load(infile)
+    canvas = float.(img)
+    canvas = convert(Matrix{RGB{Float32}}, canvas)
+    height, width = size(canvas)
+
+    # hyperparameters
+    epochs = 10
+
+    # init gsplats
+    gsplat_bag = sample_gsplats(canvas, num_samples)
+
+    # training loop
+    for epoch in 1:epochs
+
+        # forward pass
+        forward = render_gsplat(gsplat_bag, height, width)
+
+        # loss
+        loss = (forward .- canvas)
+        gradients = calc_gradients(loss, gsplat_bag)
+        update_splats!(gsplat_bag, gradients)
+
+        save(outfile, forward)
+    end
 end
 
 
@@ -692,33 +790,23 @@ function splat_main(infile::String, outfile::String, num_samples::Int)
 
     # load image
     img = load(infile)
-    # canvas = reinterpret(RGB{N0f8}, img)
     canvas = float.(img)
     canvas = convert(Matrix{RGB{Float32}}, canvas)
     height, width = size(canvas)
-
-    # generate a Matrix to define 
-    mask_rgb = deepcopy(canvas)
-    apply_convolution!(mask_rgb, "edge_detect_2")
-    apply_convolution!(mask_rgb, "box_blur_7")
-    apply_convolution!(mask_rgb, "brighten_5.5")
-    brightness_mask = map(c -> brightness(c), mask_rgb)
-    mask_bool = map(c -> brightness(c) > 0.3, mask_rgb)
 
     # Gaussian Splatting
     @time begin
         gsplat_bag = sample_gsplats(canvas, num_samples)
     end
-    edit_scale!(gsplat_bag, 4)
-    @time begin
-        canvas = render_gsplat(gsplat_bag, height, width, render_type="gsplat")
-    end
 
-    # apply_convolution!(canvas, "gaussian_blur_15"; mask=mask_bool)
+    @time begin
+        for _ in 1:100
+            canvas = render_gsplat(gsplat_bag, height, width)
+        end
+    end
 
     save(outfile, canvas)
 
 end
 
-end # module Rays
-
+end
