@@ -34,7 +34,7 @@ end
 # Abstract ray-object intersection function:
 # Needs to be implemented for each type of object to be rendered
 """ Intersect a ray with an object.
-Returns a HitRecord with info about the intersetion, or nothing if
+Returns a HitRecord with info about the intersection, or nothing if
 the ray doesn't intersect with the object. """
 function ray_intersect(ray::Ray, object) end
 
@@ -177,9 +177,9 @@ function ray_intersect(ray::Ray, object::Triangle)
     # Find UV coordinates, return nothing if they cannot be found
     if has_uvs(object)
         uvs = [get_uv(object, i) for i in 1:3]
-        uv = alpha*uvs[1] + beta*(uvs[2]) + gamma*(uvs[3])
+        uv = alpha * uvs[1] + beta * (uvs[2]) + gamma * (uvs[3])
         uv = Vec2(uv)
-        
+
     else
         uv = nothing
     end

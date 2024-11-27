@@ -54,7 +54,7 @@ function closest_intersect(objects::Array{Any,1}, ray::Ray, tmin, tmax)
     smallest_dist = tmax # Get smallest intersection distance (set to tmax to start)
     for obj in objects # Loop through all objects and find the closest intersection
         hitrec = Scenes.ray_intersect(ray, obj)
-        if (hitrec !== nothing) && (hitrec.t > tmin && hitrec.t < smallest_dist) 
+        if (hitrec !== nothing) && (hitrec.t > tmin && hitrec.t < smallest_dist)
             # Check if there is an object intersection and if the object in question is the closest one
             closest_hitrec = hitrec # If true, record the hitrec and the closest distance
             smallest_dist = hitrec.t
@@ -68,9 +68,12 @@ end
 
 """ Trace a ray from orig along ray through scene, using Whitted recursive raytracing 
 limited to rec_depth recursive calls. """
-function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, transparency=0.5)
-
-    closest_hitrec = closest_intersect(scene.objects, ray, tmin, tmax)
+function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, transparency=0.5, bvh=nothing)
+    if bvh !== nothing
+        closest_hitrec = traverse_bvh(bvh, ray)
+    else
+        closest_hitrec = closest_intersect(scene.objects, ray, tmin, tmax)
+    end
 
     if closest_hitrec === nothing
         return scene.background, Edge_Storage([nothing], 0)
@@ -161,6 +164,162 @@ function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_
     return refract_color  # Return refraction contribution
 end
 
+##############################
+# BVH Node Definitions #
+##############################
+abstract type BVHNode end
+mutable struct AABB
+    min::NTuple{3,Float64}
+    max::NTuple{3,Float64}
+end
+mutable struct BVHLeaf <: BVHNode
+    bbox::AABB
+    objects::Vector{Any}
+end
+mutable struct BVHInternal <: BVHNode
+    bbox::AABB
+    left::BVHNode
+    right::BVHNode
+end
+
+##############################
+# BVH functions #
+##############################
+
+# Compute Bounding Box for a Sphere 
+# Compute Bounding Box for a Sphere
+function compute_bbox(obj::Scenes.Sphere)
+    # Ensure obj.center is a 3D vector and obj.radius is a scalar
+    mins = Tuple(obj.center .- obj.radius)  # Convert to NTuple{3, Float64}
+    maxs = Tuple(obj.center .+ obj.radius)  # Convert to NTuple{3, Float64}
+    return AABB(mins, maxs)
+end
+
+# Compute Bounding Box for an Internal BVH Node
+function compute_bbox(node::BVHInternal)
+    left_bbox = compute_bbox(node.left)
+    right_bbox = compute_bbox(node.right)
+
+    # Calculate the element-wise minimum and maximum
+    mins = (min(left_bbox.min[1], right_bbox.min[1]),
+        min(left_bbox.min[2], right_bbox.min[2]),
+        min(left_bbox.min[3], right_bbox.min[3]))
+
+    maxs = (max(left_bbox.max[1], right_bbox.max[1]),
+        max(left_bbox.max[2], right_bbox.max[2]),
+        max(left_bbox.max[3], right_bbox.max[3]))
+
+    return AABB(mins, maxs)
+end
+
+# Compute Bounding Box for a Triangle
+function compute_bbox(obj::Scenes.Triangle)
+    vertices = [Scenes.get_vertex(obj, i) for i in 1:3]
+
+    # Initialize mins and maxs with the coordinates of the first vertex
+    mins = vertices[1]
+    maxs = vertices[1]
+
+    # Iterate through the vertices to update mins and maxs element-wise
+    for vertex in vertices
+        mins = (min(mins[1], vertex[1]), min(mins[2], vertex[2]), min(mins[3], vertex[3]))
+        maxs = (max(maxs[1], vertex[1]), max(maxs[2], vertex[2]), max(maxs[3], vertex[3]))
+    end
+
+    return AABB(mins, maxs)
+end
+
+# Compute the bounding box for the BVH Node (Leaf or Internal)
+function compute_bbox(node::BVHNode)
+    if isa(node, BVHLeaf)
+        # If it's a leaf, compute the bounding box for the objects inside
+        bbox = node.bbox
+    elseif isa(node, BVHInternal)
+        # If it's an internal node, recursively compute the bounding boxes of the children
+        left_bbox = compute_bbox(node.left)
+        right_bbox = compute_bbox(node.right)
+
+        # Merge the bounding boxes of the children
+        mins = minimum(left_bbox.min, right_bbox.min)  # Apply element-wise minimum
+        maxs = maximum(left_bbox.max, right_bbox.max)  # Apply element-wise maximum
+
+        bbox = AABB(mins, maxs)  # New bounding box
+    end
+    return bbox
+end
+
+# Ray-Box Intersection
+function ray_intersects_aabb(ray, bbox::AABB)
+    tmin = (bbox.min .- ray.origin) ./ ray.direction  # Vectorized operation
+    tmax = (bbox.max .- ray.origin) ./ ray.direction  # Vectorized operation
+    tmin, tmax = minimum.(tmin, tmax), maximum.(tmin, tmax)  # Correct ordering
+    tmin_max = maximum(tmin)  # Largest tmin
+    tmax_min = minimum(tmax)  # Smallest tmax
+    return tmin_max <= tmax_min  # Intersection condition
+end
+
+# Construct BVH
+function construct_bvh(objects::Vector{Any}, depth::Int=0)::BVHNode
+    if length(objects) <= 2 || depth > 16
+        # Base case: create a leaf node
+        bbox = compute_bbox(objects[1])  # Compute bounding box for objects
+        return BVHLeaf(bbox, objects)
+    end
+
+    # Sort objects by their centroids along the selected axis
+    axis = depth % 3 + 1  # Cycle through x, y, z axes
+    sorted_objs = sort!(objects, by=obj -> centroid(compute_bbox(obj))[axis])
+    mid = length(sorted_objs) ÷ 2
+
+    # Recursively construct BVH for left and right partitions
+    left = construct_bvh(sorted_objs[1:mid], depth + 1)
+    right = construct_bvh(sorted_objs[mid+1:end], depth + 1)
+
+    # Compute bounding box for the internal node
+    left_bbox = compute_bbox(left)
+    right_bbox = compute_bbox(right)
+    mins = Tuple(map(t -> min(t...), zip(left_bbox.min, right_bbox.min)))
+    maxs = Tuple(map(t -> max(t...), zip(left_bbox.max, right_bbox.max)))
+    bbox = AABB(mins, maxs)
+
+    return BVHInternal(bbox, left, right)
+end
+
+# Calculate Centroid of a Bounding Box
+function centroid(bbox::AABB)
+    return 0.5 .* (bbox.min .+ bbox.max)  # Element-wise midpoint calculation
+end
+
+# Traverse BVH
+function traverse_bvh(node::BVHNode, ray::Ray)
+    if isa(node, BVHLeaf)
+        # Check intersections for all objects in the leaf
+        intersections = filter(!isnothing, [Scenes.ray_intersect(ray, obj) for obj in node.objects])
+        return isempty(intersections) ? nothing : minimum(intersections, by=x -> x.t)
+    end
+
+    # If it's an internal node, check intersection with the bounding box
+    if ray_intersects_aabb(ray, node.bbox)
+        left_hit = traverse_bvh(node.left, ray)
+        right_hit = traverse_bvh(node.right, ray)
+
+        # Return the closer intersection
+        if isnothing(left_hit)
+            return right_hit
+        elseif isnothing(right_hit)
+            return left_hit
+        else
+            return left_hit.t < right_hit.t ? left_hit : right_hit
+        end
+    end
+
+    return nothing  # No intersection
+end
+
+##############################
+# End BVH functions #
+##############################
+
 """ Determine the color of intersection point described by hitrec 
 Flat shading - just color the pixel the material's diffuse color """
 function determine_color(shader::Flat, material::Material, ray::Ray, hitrec::HitRecord, scene::Scene)
@@ -207,7 +366,7 @@ end
 Determine the color contribution of the given light along the given ray.
 Color depends on the material, the shading model (shader), properties of the intersection 
 given in hitrec, """
-function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, light::Union{PointLight, DirectionalLight}, scene)
+function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, light::Union{PointLight,DirectionalLight}, scene)
     ###########
     # TODO 4b #
     ###########
@@ -230,7 +389,7 @@ function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, l
 end
 
 """ Blinn-Phong surface shading """
-function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, light::Union{PointLight, DirectionalLight}, scene)
+function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, light::Union{PointLight,DirectionalLight}, scene)
     ###########
     # TODO 4d #
     ###########
@@ -269,7 +428,7 @@ function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, l
     r = []
     for p in 0:dim-1
         for q in 0:dim-1
-            light_sample = light.position + light.vec_a * (p+rand(Float32))/dim + light.vec_b * (q+rand(Float32))/dim
+            light_sample = light.position + light.vec_a * (p + rand(Float32)) / dim + light.vec_b * (q + rand(Float32)) / dim
             push!(r, Vec3(light_sample[1], light_sample[2], light_sample[3]))
         end
     end
@@ -277,7 +436,7 @@ function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, l
     for i in 1:dim^2
         if (!is_shadowed(scene, light, hitrec.intersection, r[i]))
             lightDirection = normalize(light_direction(light, hitrec.intersection, r[i])) # Get light direction and normalize It
-            
+
             # Calculate specular reflection using the diffuse and specular components
             c += diffuseColor * I * max(0, dot(surfaceNormal, lightDirection))
         end
@@ -321,7 +480,7 @@ function is_shadowed(scene, light::AreaLight, point::Vec3, lightPoint::Vec3)
 end
 
 
-function draw_circle!(canvas, center::Tuple{Int, Int}, radius::Float64, result)
+function draw_circle!(canvas, center::Tuple{Int,Int}, radius::Float64, result)
     height, width = size(canvas)
     cx, cy = center
     r = Int(ceil(radius))
@@ -334,7 +493,7 @@ function draw_circle!(canvas, center::Tuple{Int, Int}, radius::Float64, result)
                 # Apply circle's center to the coords
                 px = cx + x
                 py = cy + y
-                
+
                 # Check boundaries
                 if 1 <= px <= width && 1 <= py <= height
                     canvas[px, py] = result
@@ -346,43 +505,43 @@ end
 
 
 function edge_detection!(
-        objs::Matrix{Edge_Storage}, proximity::Float64 = 0.0, 
-        canvas::Union{Matrix{ColorTypes.RGB{Float32}}, Nothing}=nothing,
-        detect_shadows::Bool = false)
+    objs::Matrix{Edge_Storage}, proximity::Float64=0.0,
+    canvas::Union{Matrix{ColorTypes.RGB{Float32}},Nothing}=nothing,
+    detect_shadows::Bool=false)
 
     height, width = size(objs)
     mask = falses(height, width)
 
     # Iterate image to find edges
     for i in 2:height
-        for j in 2:width 
+        for j in 2:width
             edge = false
 
             # Detect shadow edges
             if detect_shadows
                 if (objs[i, j].num_shadows !== objs[i-1, j].num_shadows) ||
-                    (objs[i, j].num_shadows !== objs[i, j-1].num_shadows) ||
-                    (objs[i, j].num_shadows !== objs[i-1, j-1].num_shadows)
+                   (objs[i, j].num_shadows !== objs[i, j-1].num_shadows) ||
+                   (objs[i, j].num_shadows !== objs[i-1, j-1].num_shadows)
                     # edge detected
                     edge = true
                 end
             end
 
-            id1 = objs[i-1,j-1].obj_id
-            id2 = objs[i-1,j].obj_id
-            id3 = objs[i,j-1].obj_id
-            id4 = objs[i,j].obj_id
+            id1 = objs[i-1, j-1].obj_id
+            id2 = objs[i-1, j].obj_id
+            id3 = objs[i, j-1].obj_id
+            id4 = objs[i, j].obj_id
             min = minimum([length(id1), length(id2), length(id3), length(id4)])
 
             for n in 1:min
                 if (id1[n] !== id4[n]) ||
-                    (id2[n] !== id4[n]) ||
-                    (id3[n] !== id4[n])
+                   (id2[n] !== id4[n]) ||
+                   (id3[n] !== id4[n])
                     # edge detected
                     edge = true
                 end
             end
-    
+
             if edge
                 center = (i, j)
                 draw_circle!(mask, center, proximity, true)
@@ -398,28 +557,28 @@ end
 function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     tmin = 1
     tmax = Inf
-    color = RGB{Float32}(0,0,0)
+    color = RGB{Float32}(0, 0, 0)
     # Uniform AA
     if (aa_mode == 1)
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
-                view_ray = Cameras.pixel_to_ray(camera, i + (p+0.5)/aa_samples, j + (q+0.5)/aa_samples)
+                view_ray = Cameras.pixel_to_ray(camera, i + (p + 0.5) / aa_samples, j + (q + 0.5) / aa_samples)
                 sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
                 color = color + sub_px_color
             end
         end
-    # Random AA
+        # Random AA
     elseif (aa_mode == 2)
         for p in 1:aa_samples^2
             view_ray = Cameras.pixel_to_ray(camera, i + rand(Float32), j + rand(Float32))
             sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
             color = color + sub_px_color
         end
-    # Stratified AA
+        # Stratified AA
     elseif (aa_mode == 3)
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
-                view_ray = Cameras.pixel_to_ray(camera, i + (p+rand(Float32))/aa_samples, j + (q+rand(Float32))/aa_samples)
+                view_ray = Cameras.pixel_to_ray(camera, i + (p + rand(Float32)) / aa_samples, j + (q + rand(Float32)) / aa_samples)
                 sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
                 color = color + sub_px_color
             end
@@ -429,13 +588,15 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
 end
 
 # Rays.main(7, 1, 300, 300, "results/bunny.png")
-function main(scene, camera, height, width, outfile, 
-                aa_mode=0, aa_samples=1)
+function main(scene, camera, height, width, outfile,
+    aa_mode=0, aa_samples=1)
 
     # get the requested scene and camera
     scene = TestScenes.get_scene(scene)
     camera = TestScenes.get_camera(camera, height, width)
 
+    # Construct a BVH for the objects in the scene
+    bvh = construct_bvh(scene.objects)
 
     # Create a blank canvas to store the image:
     canvas = zeros(RGB{Float32}, height, width)
@@ -454,7 +615,7 @@ function main(scene, camera, height, width, outfile,
             # Full-image AA
             if (aa_mode > 3)
                 canvas[i, j] = aa_get_px_color(i, j, scene, camera, aa_mode - 3, aa_samples)
-            # No AA or edge-only AA
+                # No AA or edge-only AA
             else
                 tmin = 1
                 tmax = Inf
@@ -495,15 +656,15 @@ function determine_conv_matrix(conv_type)
         m = match(r"^brighten_([+-]?\d*\.?\d+)", conv_type)
         scale = parse(Float32, m.captures[1])
         conv = fill(scale, 1, 1)
-    # box blur convolution filter for any odd size
+        # box blur convolution filter for any odd size
     elseif startswith(conv_type, "box_blur_")
         m = match(r"^box_blur_(\d+)", conv_type)
         conv_size = parse(Int, m.captures[1])
         if conv_size % 2 == 0 || conv_size < 0
             error("You must select an odd, positive value for box blur.")
         end
-        conv = fill(1, conv_size, conv_size) * (1 / (conv_size*conv_size))
-    # gaussian blur convolution filter for any odd size
+        conv = fill(1, conv_size, conv_size) * (1 / (conv_size * conv_size))
+        # gaussian blur convolution filter for any odd size
     elseif startswith(conv_type, "gaussian_blur_")
         m = match(r"^gaussian_blur_(\d+)", conv_type)
         conv_size = parse(Int, m.captures[1])
@@ -513,48 +674,48 @@ function determine_conv_matrix(conv_type)
         conv = fill(0.0, conv_size, conv_size)
         for i in 1:conv_size
             for j in 1:conv_size
-                x, y = (i - (conv_size-1)/2 - 1), (j - (conv_size-1)/2 - 1)
-                conv[i, j] = (1 / (2*pi)) * exp(-1/2(x*x + y*y))
+                x, y = (i - (conv_size - 1) / 2 - 1), (j - (conv_size - 1) / 2 - 1)
+                conv[i, j] = (1 / (2 * pi)) * exp(-1 / 2(x * x + y * y))
             end
         end
         conv ./= sum(conv)
     elseif conv_type == "edge_detect_1"
         conv = Matrix{Int}([
-            0 -1  0;
-            -1  4 -1;
-            0 -1  0
-        ]) * (1/4)
+            0 -1 0;
+            -1 4 -1;
+            0 -1 0
+        ]) * (1 / 4)
     elseif conv_type == "edge_detect_2"
         conv = Matrix{Int}([
             -1 -1 -1;
-            -1  8 -1;
+            -1 8 -1;
             -1 -1 -1
-        ]) * (1/8)
+        ]) * (1 / 8)
     else
         error(conv_type, " illegal convolution type")
     end
-    
+
     return conv
 end
 
-function apply_convolution!(canvas, conv_type::String; mask = trues(size(canvas)))
+function apply_convolution!(canvas, conv_type::String; mask=trues(size(canvas)))
     # fetch convolution matrix
     conv_matrix = determine_conv_matrix(conv_type)
 
     width, height = size(canvas)
     CX, CY = size(conv_matrix)
-    cx, cy = Int((CX-1)/2), Int((CY-1)/2)
+    cx, cy = Int((CX - 1) / 2), Int((CY - 1) / 2)
 
     # pad by 0
-    pad_canvas = fill(RGB{Float32}(1,1,1), width + 2*cx, height + 2*cy)
-    pad_canvas[1+cx : end-cx, 1+cy : end-cy] .= canvas
+    pad_canvas = fill(RGB{Float32}(1, 1, 1), width + 2 * cx, height + 2 * cy)
+    pad_canvas[1+cx:end-cx, 1+cy:end-cy] .= canvas
 
     # apply convolution
-    for w in 1+cx : width+cx
-        for h in 1+cy : height+cy
+    for w in 1+cx:width+cx
+        for h in 1+cy:height+cy
             # apply convolution to the subset specified by mask
             if mask[w-cx, h-cy]
-                subset = pad_canvas[w-cx : w+cx, h-cy : h+cy]
+                subset = pad_canvas[w-cx:w+cx, h-cy:h+cy]
                 convolution = abs.(sum(conv_matrix .* subset))
                 canvas[w-cx, h-cy] = convolution
             end
@@ -572,13 +733,13 @@ function max_convolve!(canvas, kernel_size::Int)
     cx, cy = kernel_size, kernel_size
 
     # pad by 0
-    pad_canvas = fill(RGB{Float32}(1,1,1), width + 2*cx, height + 2*cy)
-    pad_canvas[1+cx : end-cx, 1+cy : end-cy] .= canvas
+    pad_canvas = fill(RGB{Float32}(1, 1, 1), width + 2 * cx, height + 2 * cy)
+    pad_canvas[1+cx:end-cx, 1+cy:end-cy] .= canvas
 
     # apply convolution
-    for w in 1+cx : width+cx
-        for h in 1+cy : height+cy
-            subset = pad_canvas[w-cx : w+cx, h-cy : h+cy]
+    for w in 1+cx:width+cx
+        for h in 1+cy:height+cy
+            subset = pad_canvas[w-cx:w+cx, h-cy:h+cy]
             canvas[w-cx, h-cy] = maximum(c -> brightness(c), subset)
         end
     end
@@ -608,7 +769,7 @@ end
 
 # My gsplats assume x and y are independent. 
 # The covariance can scale by a factor in the x and y independently.
-mutable struct gsplat 
+mutable struct gsplat
     center::Vector{Int}
     color::RGB{Float32}
     stretchx::Float32
@@ -617,7 +778,7 @@ mutable struct gsplat
 end
 
 function sample_gsplats(canvas::Matrix{ColorTypes.RGB{Float32}}, num_samples::Int)
-    
+
     height, width = size(canvas)
     gsplat_bag = Vector{gsplat}()
     scale = 2
@@ -628,7 +789,7 @@ function sample_gsplats(canvas::Matrix{ColorTypes.RGB{Float32}}, num_samples::In
         alpha = max(color.r, color.g, color.b) / 1.0
         color /= alpha
 
-        push!(gsplat_bag, gsplat([cx, cy], color, scale, scale, alpha/100))
+        push!(gsplat_bag, gsplat([cx, cy], color, scale, scale, alpha / 100))
     end
 
     return gsplat_bag
@@ -637,7 +798,7 @@ end
 function render_KNN(gsplat_bag::Vector{gsplat}, height::Int, width::Int, k::Int)
 
     store_distance = fill(0.0, k, height, width)
-    store_color = fill(RGB{Float32}(0,0,0), k, height, width)
+    store_color = fill(RGB{Float32}(0, 0, 0), k, height, width)
 
     for blob in gsplat_bag
         cx, cy = blob.center
@@ -646,8 +807,8 @@ function render_KNN(gsplat_bag::Vector{gsplat}, height::Int, width::Int, k::Int)
         p = 1e-3
         offset = Int(round(sqrt(-max(blob.sx, blob.sy) * log(p))))
 
-        for h in max(1, cy-offset) : min(height, cy+offset)
-            for w in max(1, cx-offset) : min(width, cx+offset)
+        for h in max(1, cy - offset):min(height, cy + offset)
+            for w in max(1, cx - offset):min(width, cx + offset)
 
                 # calculate distance b/w blob.center & (h, w)
                 # store color at appropriate distance ranking
@@ -659,8 +820,8 @@ end
 
 
 function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
-    canvas = fill(RGB{Float32}(0,0,0), height, width)
-    
+    canvas = fill(RGB{Float32}(0, 0, 0), height, width)
+
     for blob in gsplat_bag
         cx, cy = blob.center
         # specify a probability theshold for the Gaussian 
@@ -668,17 +829,17 @@ function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
         p = 1e-3
         offset = Int(round(sqrt(-max(blob.sx, blob.sy) * log(p))))
 
-        for h in max(1, cy-offset) : min(height, cy+offset)
-            for w in max(1, cx-offset) : min(width, cx+offset)
+        for h in max(1, cy - offset):min(height, cy + offset)
+            for w in max(1, cx - offset):min(width, cx + offset)
 
                 # Evaluate Gaussian
                 x = w - blob.center[1]
                 y = h - blob.center[2]
-                scale = (blob.sx * blob.sy) / (2*pi)
-                gauss = scale * exp(-1/2 * ((x / blob.sx)^2 + (y / blob.sy)^2))
+                scale = (blob.sx * blob.sy) / (2 * pi)
+                gauss = scale * exp(-1 / 2 * ((x / blob.sx)^2 + (y / blob.sy)^2))
 
                 gauss = min(1, gauss)
-                color = gauss .* blob.alpha .* blob.color 
+                color = gauss .* blob.alpha .* blob.color
                 canvas[h, w] += color
 
             end
@@ -692,8 +853,8 @@ function update_splats!(gsplat_bag, LR; stretchx=0, stretchy=0, luminance=0)
     # adds noise to the scale parameter
     for blob in gsplat_bag
         blob.stretchx += LR * stretchx
-        blob.stretchy += LR * stretchy 
-        blob.luminance += LR * luminance 
+        blob.stretchy += LR * stretchy
+        blob.luminance += LR * luminance
     end
 end
 
