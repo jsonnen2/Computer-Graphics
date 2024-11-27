@@ -1,0 +1,16 @@
+Looks like good progress.
+
+Implementing convolution instead of the Oren-Nayar model seems odd because they're not
+direct alternatives to one another. Scope/ambition-wise, I think convolution seems a little easier than Oren-Nayar, if only because there's less to learn that wasn't covered in class. Your revised proposal also lists "Another material object" in addition to the Oren-Nayar model; is that also being dropped?
+
+Now that the thicker edges are available (by the way, you implemented something like an operator called "dilation" to thicken the edges), it would be nice to see comparisons of AA using the thin edge maps vs the thick ones; presumably the lack of smoothing along blocky edges we saw in the MS1 images would be mitigated with the thicker edges.
+
+Also would like to see results from area lights. I see a bunch of images in the results folder, but the filenames don't make it sufficiently obvious what I'm looking at.
+
+Looks like you're generally on track with the MS2 goals you listed in the MS1 report, though without seeing more results I can't tell how well/if these features are working. The bunnyBVH render looks weird - is your BVH implementation buggy?
+
+I got weird compile issues when trying to run. I had to manually add the Statistics package to get things to run. Make sure you've added that in your project and kept the project / manifest files up to date in your repo.
+
+I know this is just a milestone report, but in general it is difficult to see clear evidence of your progress, mainly because of missing demonstrative results and/or explanation of what you've done. Combined with the fact that your revised proposal was a terse text file that did not contain the complete information from the original, it's harder than it should be to tell whether you're on track to meet your goals. 
+
+I am hoping that in your final report, you will address this; it is your responsibility to convince me that you've completed the project you proposed, and I shouldn't have to dig in your code, fiddle with rendering parameters, or guess the meanings of filenames to have to do it.
