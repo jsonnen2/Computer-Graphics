@@ -650,6 +650,31 @@ function main(scene, camera, height, width, outfile,
     clamp01!(canvas)
     save(outfile, canvas)
 end
+
+function aa_run(outfile::String, aa_mode::String, aa_samples::Int, full::Bool)
+    output_mode = 0
+
+    if aa_samples == 0
+        error("Sample count must be greater than 0")
+    end
+
+    if aa_mode == "u"
+        output_mode = 1
+    elseif aa_mode == "r"
+        output_mode = 2
+    elseif aa_mode == "s"
+        output_mode = 3
+    else
+        error("Invalid antialiasing mode")
+    end
+
+    if full == true
+        output_mode += 3
+    end
+
+    main(7, 1, 400, 400, outfile, output_mode, aa_samples)
+end
+
 function determine_conv_matrix(conv_type)
 
     if startswith(conv_type, "brighten_")
