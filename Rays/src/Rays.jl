@@ -505,9 +505,11 @@ end
 
 
 function edge_detection!(
-    objs::Matrix{Edge_Storage}, proximity::Float64=0.0,
-    canvas::Union{Matrix{ColorTypes.RGB{Float32}},Nothing}=nothing,
-    detect_shadows::Bool=false)
+        objs::Matrix{Edge_Storage}, 
+        canvas::Union{Matrix{ColorTypes.RGB{Float32}},Nothing}=nothing,
+        proximity::Float64=0.0,
+        detect_shadows::Bool=false,
+        edit_canvas::Bool=false)
 
     height, width = size(objs)
     mask = falses(height, width)
@@ -522,31 +524,35 @@ function edge_detection!(
                 if (objs[i, j].num_shadows !== objs[i-1, j].num_shadows) ||
                    (objs[i, j].num_shadows !== objs[i, j-1].num_shadows) ||
                    (objs[i, j].num_shadows !== objs[i-1, j-1].num_shadows)
-                    # edge detected
+                    
                     edge = true
                 end
             end
 
+            # Store object ids up, left, up-left, and here
             id1 = objs[i-1, j-1].obj_id
             id2 = objs[i-1, j].obj_id
             id3 = objs[i, j-1].obj_id
             id4 = objs[i, j].obj_id
             min = minimum([length(id1), length(id2), length(id3), length(id4)])
 
+            # Detect all other edge types
             for n in 1:min
                 if (id1[n] !== id4[n]) ||
                    (id2[n] !== id4[n]) ||
                    (id3[n] !== id4[n])
-                    # edge detected
+                    
                     edge = true
                 end
             end
 
-            if edge
-                center = (i, j)
-                draw_circle!(mask, center, proximity, true)
-                if canvas !== nothing
-                    draw_circle!(canvas, center, proximity, RGB{Float32}(0, 1, 0))
+            if edit_canvas
+                if edge
+                    center = (i, j)
+                    draw_circle!(mask, center, proximity, true)
+                    if canvas !== nothing
+                        draw_circle!(canvas, center, proximity, RGB{Float32}(0, 1, 0))
+                    end
                 end
             end
         end
@@ -559,7 +565,7 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     tmax = Inf
     color = RGB{Float32}(0, 0, 0)
     # Uniform AA
-    if (aa_mode == 1)
+    if (aa_mode == "uniform")
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
                 view_ray = Cameras.pixel_to_ray(camera, i + (p + 0.5) / aa_samples, j + (q + 0.5) / aa_samples)
@@ -567,15 +573,15 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
                 color = color + sub_px_color
             end
         end
-        # Random AA
-    elseif (aa_mode == 2)
+    # Random AA
+    elseif (aa_mode == "random")
         for p in 1:aa_samples^2
             view_ray = Cameras.pixel_to_ray(camera, i + rand(Float32), j + rand(Float32))
             sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
             color = color + sub_px_color
         end
-        # Stratified AA
-    elseif (aa_mode == 3)
+    # Stratified AA
+    elseif (aa_mode == "stratified")
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
                 view_ray = Cameras.pixel_to_ray(camera, i + (p + rand(Float32)) / aa_samples, j + (q + rand(Float32)) / aa_samples)
@@ -587,9 +593,23 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     return color / aa_samples^2
 end
 
-# Rays.main(7, 1, 300, 300, "results/bunny.png")
-function main(scene, camera, height, width, outfile,
-    aa_mode=0, aa_samples=1)
+# Rays.main(7, 1, 300, 300, "results/AA_settings")
+function main(scene, camera, height, width, out_dir, 
+    AA_type="none", AA_samples=1, 
+    thickness=0.0, detect_shadows=true)
+    """
+Parameters
+    AA_type: Type of Anti-Aliasing to perform.
+        - "full_random"
+        - "full_stratified"
+        - "full_uniform"
+        - "edge_detect_random"
+        - "edge_detect_stratified"
+        - "edge_detect_uniform"
+        - "none"
+    AA_samples: number of anti-aliasing samples to perform. 
+
+    """
 
     # get the requested scene and camera
     scene = TestScenes.get_scene(scene)
@@ -602,21 +622,22 @@ function main(scene, camera, height, width, outfile,
     canvas = zeros(RGB{Float32}, height, width)
     objs = Array{Edge_Storage}(undef, height, width)
 
-    ##########
-    # TODO 3 #
-    ##########
-    # Pseudocode:
-    #   loop over all pixels in the image
-    #   for each pixel, get a viewing ray from the camera
-    #   then call traceray to determine its color
-    #
-    for i in 1:height
-        for j in 1:width
-            # Full-image AA
-            if (aa_mode > 3)
-                canvas[i, j] = aa_get_px_color(i, j, scene, camera, aa_mode - 3, aa_samples)
-                # No AA or edge-only AA
-            else
+
+    if startswith(AA_type, "full_")
+
+        # Anti-Alias across the entire image. 
+        for i in 1:height
+            for j in 1:width
+
+                sample_type = AA_type[6:end] # remove the first 5 chars from str
+                canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
+            end
+        end
+    elseif startswith(AA_type, "edge_detect_")
+
+        # generate the data to be able to edge detect 
+        for i in 1:height
+            for j in 1:width
                 tmin = 1
                 tmax = Inf
                 view_ray = Cameras.pixel_to_ray(camera, i, j)
@@ -625,55 +646,42 @@ function main(scene, camera, height, width, outfile,
                 objs[i, j] = edge_stor
             end
         end
-    end
-    ##############
-    # Determine edges
-    ##############
-    if (aa_mode < 4)
-        mask = edge_detection!(objs, 1.0, canvas, true)
-    end
-
-    #########################
-    # Edge-based antialiasing
-    #########################
-    if (aa_mode != 0 && aa_mode < 4)
+        # generate boolean mask
+        mask = edge_detection!(objs, canvas, thickness, detect_shadows, true)
+    
+        # Anti-Alias according to mask
         for i in 1:height
             for j in 1:width
                 if (mask[i, j] == true)
-                    canvas[i, j] = aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
+
+                    sample_type = AA_type[13:end] # remove the first 12 chars from str
+                    canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
                 end
+            end
+        end
+    elseif AA_type == "none"
+        # standard ray tracing
+        for i in 1:height
+            for j in 1:width
+                tmin = 1
+                tmax = Inf
+                view_ray = Cameras.pixel_to_ray(camera, i, j)
+                color, edge_stor = traceray(scene, view_ray, tmin, tmax)
+                canvas[i, j] = color
             end
         end
     end
 
+    if startswith(AA_type, "full_")
+        outfile = "$out_dir/$AA_type-N=$AA_samples.png"
+    else
+        outfile = "$out_dir/$AA_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
+    end
     # clamp canvas to valid range:
     clamp01!(canvas)
     save(outfile, canvas)
 end
 
-function aa_run(outfile::String, aa_mode::String, aa_samples::Int, full::Bool)
-    output_mode = 0
-
-    if aa_samples == 0
-        error("Sample count must be greater than 0")
-    end
-
-    if aa_mode == "u"
-        output_mode = 1
-    elseif aa_mode == "r"
-        output_mode = 2
-    elseif aa_mode == "s"
-        output_mode = 3
-    else
-        error("Invalid antialiasing mode")
-    end
-
-    if full == true
-        output_mode += 3
-    end
-
-    main(7, 1, 400, 400, outfile, output_mode, aa_samples)
-end
 
 function determine_conv_matrix(conv_type)
 
@@ -770,7 +778,6 @@ function max_convolve!(canvas, kernel_size::Int)
     end
 end
 
-
 # Rays.blur("conv_imgs/treebranch_source.jpg", "conv_imgs/treebranch_blur.jpg", "box_blur_3")
 function blur(infile::String, outfile::String, conv::String)
     # apply bluring to an image using convolutions
@@ -780,7 +787,6 @@ function blur(infile::String, outfile::String, conv::String)
 
     # load image
     img = load(infile)
-    # canvas = reinterpret(RGB{N0f8}, img)
     canvas = float.(img)
     canvas = convert(Matrix{RGB{Float32}}, canvas)
     height, width = size(canvas)
@@ -792,134 +798,5 @@ function blur(infile::String, outfile::String, conv::String)
     save(outfile, canvas)
 end
 
-# My gsplats assume x and y are independent. 
-# The covariance can scale by a factor in the x and y independently.
-mutable struct gsplat
-    center::Vector{Int}
-    color::RGB{Float32}
-    stretchx::Float32
-    stretchy::Float32
-    luminance::Float32
-end
-
-function sample_gsplats(canvas::Matrix{ColorTypes.RGB{Float32}}, num_samples::Int)
-
-    height, width = size(canvas)
-    gsplat_bag = Vector{gsplat}()
-    scale = 2
-
-    for n in 1:num_samples
-        cx, cy = rand(1:width), rand(1:height)
-        color = canvas[cy, cx]
-        alpha = max(color.r, color.g, color.b) / 1.0
-        color /= alpha
-
-        push!(gsplat_bag, gsplat([cx, cy], color, scale, scale, alpha / 100))
-    end
-
-    return gsplat_bag
-end
-
-function render_KNN(gsplat_bag::Vector{gsplat}, height::Int, width::Int, k::Int)
-
-    store_distance = fill(0.0, k, height, width)
-    store_color = fill(RGB{Float32}(0, 0, 0), k, height, width)
-
-    for blob in gsplat_bag
-        cx, cy = blob.center
-        # specify a probability theshold for the Gaussian 
-        # only evaluate points which are "close enough" to the center
-        p = 1e-3
-        offset = Int(round(sqrt(-max(blob.sx, blob.sy) * log(p))))
-
-        for h in max(1, cy - offset):min(height, cy + offset)
-            for w in max(1, cx - offset):min(width, cx + offset)
-
-                # calculate distance b/w blob.center & (h, w)
-                # store color at appropriate distance ranking
-            end
-        end
-    end
-    return canvas
-end
-
-
-function render_gsplat(gsplat_bag::Vector{gsplat}, height::Int, width::Int)
-    canvas = fill(RGB{Float32}(0, 0, 0), height, width)
-
-    for blob in gsplat_bag
-        cx, cy = blob.center
-        # specify a probability theshold for the Gaussian 
-        # only evaluate points which are "close enough" to the center
-        p = 1e-3
-        offset = Int(round(sqrt(-max(blob.sx, blob.sy) * log(p))))
-
-        for h in max(1, cy - offset):min(height, cy + offset)
-            for w in max(1, cx - offset):min(width, cx + offset)
-
-                # Evaluate Gaussian
-                x = w - blob.center[1]
-                y = h - blob.center[2]
-                scale = (blob.sx * blob.sy) / (2 * pi)
-                gauss = scale * exp(-1 / 2 * ((x / blob.sx)^2 + (y / blob.sy)^2))
-
-                gauss = min(1, gauss)
-                color = gauss .* blob.alpha .* blob.color
-                canvas[h, w] += color
-
-            end
-        end
-    end
-    return canvas
-end
-
-
-function update_splats!(gsplat_bag, LR; stretchx=0, stretchy=0, luminance=0)
-    # adds noise to the scale parameter
-    for blob in gsplat_bag
-        blob.stretchx += LR * stretchx
-        blob.stretchy += LR * stretchy
-        blob.luminance += LR * luminance
-    end
-end
-
-
-function loss_MSE(forward, ground_truth)
-    return 0.5 * (forward .- ground_truth)^2
-end
-
-
-# Rays.splat_main("gsplat_imgs/landscape.jpg", "gsplat_imgs/landscape_splat.jpg", 5000)
-function splat_main(infile::String, outfile::String, num_samples::Int)
-
-    # load image
-    img = load(infile)
-    # canvas = reinterpret(RGB{N0f8}, img)
-    canvas = float.(img)
-    canvas = convert(Matrix{RGB{Float32}}, canvas)
-    height, width = size(canvas)
-
-    # generate a Matrix to define 
-    mask_rgb = deepcopy(canvas)
-    apply_convolution!(mask_rgb, "edge_detect_2")
-    apply_convolution!(mask_rgb, "box_blur_7")
-    apply_convolution!(mask_rgb, "brighten_5.5")
-    brightness_mask = map(c -> brightness(c), mask_rgb)
-    mask_bool = map(c -> brightness(c) > 0.3, mask_rgb)
-
-    # Gaussian Splatting
-    @time begin
-        gsplat_bag = sample_gsplats(canvas, num_samples)
-    end
-    edit_scale!(gsplat_bag, 4)
-    @time begin
-        canvas = render_gsplat(gsplat_bag, height, width)
-    end
-
-    # apply_convolution!(canvas, "gaussian_blur_15"; mask=mask_bool)
-
-    save(outfile, canvas)
-
-end
 
 end
