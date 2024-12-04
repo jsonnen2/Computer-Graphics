@@ -1,0 +1,22 @@
+name = "Voronoi"
+uuid = "66662c87-25d6-4c1c-819b-3e05717c8b1e"
+authors = ["Arthur Santana <arthursantana@protonmail.com>"]
+version = "0.1.1"
+
+[deps]
+GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
+ImageIO = "82e4d734-157c-48bb-816b-45c225c6df19"
+Images = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[compat]
+GeometryBasics = "0.5.1"
+ImageIO = "0.6.8"
+Images = "0.26.1"
+LinearAlgebra = "1.11.0"
+StaticArrays = "1.9.8"

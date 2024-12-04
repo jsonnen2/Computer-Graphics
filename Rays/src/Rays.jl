@@ -12,7 +12,6 @@ using FileIO
 using Images
 using StaticArrays
 using LinearAlgebra
-using Images # loading images for convolutional filtering
 
 push!(LOAD_PATH, pwd())
 include("GfxBase.jl")
@@ -593,23 +592,26 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     return color / aa_samples^2
 end
 
-# Rays.main(7, 1, 300, 300, "results/AA_settings")
-function main(scene, camera, height, width, out_dir, 
-    AA_type="none", AA_samples=1, 
-    thickness=0.0, detect_shadows=true)
+# Rays.main(7, 1, 300, 300, "results/Anti_Aliasing_Results")
+function main(height, width, out_dir, AA_type="none", sample_type="uniform", 
+                AA_samples=1, thickness=0.0, detect_shadows=true)
     """
 Parameters
     AA_type: Type of Anti-Aliasing to perform.
-        - "full_random"
-        - "full_stratified"
-        - "full_uniform"
-        - "edge_detect_random"
-        - "edge_detect_stratified"
-        - "edge_detect_uniform"
-        - "none"
-    AA_samples: number of anti-aliasing samples to perform. 
-
+        - "full"            -- across entire image
+        - "edge_detect"     -- only at pixels which my algorithm determines as an edge
+        - "none"            -- standard raytracing with 1 sample per pixel center
+    sample_type: Sampling method for subpixels during Anti-Aliasing
+        - "uniform"
+        - "random" 
+        - "stratified"
+    AA_samples: number of anti-aliasing samples to perform per pixel
+    thickness: The radius of circle to enscribe on each detected edge. 
+                Recommended to use less than 2.
+    detect_shadows: boolean which controls if edges for shadows are included. It is 
+                    recommended to turn off when using directional lighting.
     """
+    scene, camera = 7, 1
 
     # get the requested scene and camera
     scene = TestScenes.get_scene(scene)
@@ -623,18 +625,14 @@ Parameters
     objs = Array{Edge_Storage}(undef, height, width)
 
 
-    if startswith(AA_type, "full_")
-
+    if AA_type == "full"
         # Anti-Alias across the entire image. 
         for i in 1:height
             for j in 1:width
-
-                sample_type = AA_type[6:end] # remove the first 5 chars from str
                 canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
             end
         end
-    elseif startswith(AA_type, "edge_detect_")
-
+    elseif AA_type == "edge_detect"
         # generate the data to be able to edge detect 
         for i in 1:height
             for j in 1:width
@@ -653,8 +651,6 @@ Parameters
         for i in 1:height
             for j in 1:width
                 if (mask[i, j] == true)
-
-                    sample_type = AA_type[13:end] # remove the first 12 chars from str
                     canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
                 end
             end
@@ -671,130 +667,16 @@ Parameters
             end
         end
     end
-
-    if startswith(AA_type, "full_")
-        outfile = "$out_dir/$AA_type-N=$AA_samples.png"
+    # Determine filename to save as
+    if AA_type == "none"
+        outfile = "$out_dir/no_anti_aliasing-$sample_type.png"
+    elseif startswith(AA_type, "full_")
+        outfile = "$out_dir/full_AA-$sample_type-N=$AA_samples.png"
     else
-        outfile = "$out_dir/$AA_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
+        outfile = "$out_dir/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
     end
     # clamp canvas to valid range:
     clamp01!(canvas)
-    save(outfile, canvas)
-end
-
-
-function determine_conv_matrix(conv_type)
-
-    if startswith(conv_type, "brighten_")
-        m = match(r"^brighten_([+-]?\d*\.?\d+)", conv_type)
-        scale = parse(Float32, m.captures[1])
-        conv = fill(scale, 1, 1)
-        # box blur convolution filter for any odd size
-    elseif startswith(conv_type, "box_blur_")
-        m = match(r"^box_blur_(\d+)", conv_type)
-        conv_size = parse(Int, m.captures[1])
-        if conv_size % 2 == 0 || conv_size < 0
-            error("You must select an odd, positive value for box blur.")
-        end
-        conv = fill(1, conv_size, conv_size) * (1 / (conv_size * conv_size))
-        # gaussian blur convolution filter for any odd size
-    elseif startswith(conv_type, "gaussian_blur_")
-        m = match(r"^gaussian_blur_(\d+)", conv_type)
-        conv_size = parse(Int, m.captures[1])
-        if conv_size % 2 == 0 || conv_size < 0
-            error("You must select an odd, positive value for gaussian blur.")
-        end
-        conv = fill(0.0, conv_size, conv_size)
-        for i in 1:conv_size
-            for j in 1:conv_size
-                x, y = (i - (conv_size - 1) / 2 - 1), (j - (conv_size - 1) / 2 - 1)
-                conv[i, j] = (1 / (2 * pi)) * exp(-1 / 2(x * x + y * y))
-            end
-        end
-        conv ./= sum(conv)
-    elseif conv_type == "edge_detect_1"
-        conv = Matrix{Int}([
-            0 -1 0;
-            -1 4 -1;
-            0 -1 0
-        ]) * (1 / 4)
-    elseif conv_type == "edge_detect_2"
-        conv = Matrix{Int}([
-            -1 -1 -1;
-            -1 8 -1;
-            -1 -1 -1
-        ]) * (1 / 8)
-    else
-        error(conv_type, " illegal convolution type")
-    end
-
-    return conv
-end
-
-function apply_convolution!(canvas, conv_type::String; mask=trues(size(canvas)))
-    # fetch convolution matrix
-    conv_matrix = determine_conv_matrix(conv_type)
-
-    width, height = size(canvas)
-    CX, CY = size(conv_matrix)
-    cx, cy = Int((CX - 1) / 2), Int((CY - 1) / 2)
-
-    # pad by 0
-    pad_canvas = fill(RGB{Float32}(1, 1, 1), width + 2 * cx, height + 2 * cy)
-    pad_canvas[1+cx:end-cx, 1+cy:end-cy] .= canvas
-
-    # apply convolution
-    for w in 1+cx:width+cx
-        for h in 1+cy:height+cy
-            # apply convolution to the subset specified by mask
-            if mask[w-cx, h-cy]
-                subset = pad_canvas[w-cx:w+cx, h-cy:h+cy]
-                convolution = abs.(sum(conv_matrix .* subset))
-                canvas[w-cx, h-cy] = convolution
-            end
-        end
-    end
-end
-
-# Define a brightness function
-function brightness(c::RGB{Float32})
-    return c.r + c.g + c.b
-end
-
-function max_convolve!(canvas, kernel_size::Int)
-    width, height = size(canvas)
-    cx, cy = kernel_size, kernel_size
-
-    # pad by 0
-    pad_canvas = fill(RGB{Float32}(1, 1, 1), width + 2 * cx, height + 2 * cy)
-    pad_canvas[1+cx:end-cx, 1+cy:end-cy] .= canvas
-
-    # apply convolution
-    for w in 1+cx:width+cx
-        for h in 1+cy:height+cy
-            subset = pad_canvas[w-cx:w+cx, h-cy:h+cy]
-            canvas[w-cx, h-cy] = maximum(c -> brightness(c), subset)
-        end
-    end
-end
-
-# Rays.blur("conv_imgs/treebranch_source.jpg", "conv_imgs/treebranch_blur.jpg", "box_blur_3")
-function blur(infile::String, outfile::String, conv::String)
-    # apply bluring to an image using convolutions
-    # 1. Gaussian
-    # 2. Blocky 
-    # 3. Edge Detection
-
-    # load image
-    img = load(infile)
-    canvas = float.(img)
-    canvas = convert(Matrix{RGB{Float32}}, canvas)
-    height, width = size(canvas)
-
-    # load convolution matrix & store size
-    conv_matrix = determine_conv_matrix(conv)
-    apply_convolution!(canvas, conv_matrix)
-
     save(outfile, canvas)
 end
 
