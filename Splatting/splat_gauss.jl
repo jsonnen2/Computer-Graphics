@@ -91,24 +91,24 @@ end
 function update_splats!(gsplat_bag, gradients, LR_scale, LR_lum)
 
     for (idx, blob) in enumerate(gsplat_bag)
-        blob.luminance += LR_lum * gradients[1][idx]
-        blob.scale_x += LR_scale * gradients[2][idx]
-        blob.scale_y += LR_scale * gradients[3][idx]
+        new_luminance = blob.luminance + LR_lum * gradients[1][idx]
+        new_scale_x = blob.scale_x + LR_scale * gradients[2][idx]
+        new_scale_y = blob.scale_y + LR_scale * gradients[3][idx]
 
-        blob.luminance = clamp(blob.luminance, 0.0, 1.0)
-        blob.scale_x = clamp(blob.scale_x, 0.0, 100.0)
-        blob.scale_y = clamp(blob.scale_y, 0.0, 100.0)
+        new_luminance = clamp(new_luminance, 0.0, 1.0)
+        new_scale_x = clamp(new_scale_x, 0.0, 100.0)
+        new_scale_y = clamp(new_scale_y, 0.0, 100.0)
 
         # sometimes my blob parameters become NaN after a lot of training
-        # So I reset the values to default when NaN
-        if isnan(blob.luminance)
-            blob.luminance = 1
+        # So I don't update params if update trys to set them to NaN.
+        if !isnan(new_luminance)
+            blob.luminance = new_luminance
         end
-        if isnan(blob.scale_x)
-            blob.scale_x = 2
+        if !isnan(new_scale_x)
+            blob.scale_x = new_scale_x
         end
-        if isnan(blob.scale_y)
-            blob.scale_y = 2
+        if !isnan(new_scale_y)
+            blob.scale_y = new_scale_y
         end
     end
 end
