@@ -32,6 +32,8 @@ import .Scenes.HitRecord
 import .Cameras
 import .TestScenes
 
+use_bvh = false
+
 mutable struct Edge_Storage
     obj_id::Vector{Any}
     num_shadows::Int
@@ -67,8 +69,10 @@ end
 
 """ Trace a ray from orig along ray through scene, using Whitted recursive raytracing 
 limited to rec_depth recursive calls. """
-function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, transparency=0.5, bvh=nothing)
-    if bvh !== nothing
+function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
+
+    if use_bvh == true
+        bvh = construct_bvh(scene.objects)
         closest_hitrec = traverse_bvh(bvh, ray)
     else
         closest_hitrec = closest_intersect(scene.objects, ray, tmin, tmax)
@@ -100,11 +104,11 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, tran
             (r - 2 * dot(r, n) * n),
         )
         # recurse on reflected ray
-        reflect_color, edge_detect_reflect = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
+        reflect_color, ED = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
         # Merge. overwrite shadow. Append old object to edge_detect_reflect
-        push!(edge_detect_reflect.obj_id, object)
-        edge_detect_reflect.num_shadows = num_shadows
-        edge_detect = edge_detect_reflect
+        # push!(ED.obj_id, object)
+        # ED.num_shadows = num_shadows
+        # edge_detect = ED
 
         # scale according to mirror_coeff
         local_color = (1 - mirror_coeff) * local_color + mirror_coeff * reflect_color
@@ -113,9 +117,14 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, tran
     ##############################
     # Refraction # (Assumes refractive object is glass, which has an IOR of 1.5)
     ##############################
-    if transparency > 0 && rec_depth <= 8
-        # TODO: find object id recursively
-        refract_color = refract_ray(scene, ray, closest_hitrec, tmin, tmax, rec_depth, ior)
+    if material.transparency > 0 && rec_depth <= 8
+        refract_color, ED = refract_ray(scene, ray, closest_hitrec, tmin, tmax, rec_depth, material.ior)
+        # Merge. overwrite shadow. Append old object to edge_detect_reflect
+        # push!(ED.obj_id, object)
+        # ED.num_shadows = num_shadows # TODO: sus
+        # edge_detect = ED
+
+        # scale according to transparency
         local_color = (1 - transparency) * local_color + transparency * refract_color
     end
 
@@ -126,7 +135,8 @@ end
 ##############################
 # Refraction Function # (Assumes refractive object is glass, which has an IOR of 1.5)
 ##############################
-function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_depth, ior=1.5)
+function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_depth, ior)
+
     r = normalize(ray.direction)  # Normalize ray direction
     n = normalize(hitrec.normal)  # Normalize surface normal
     cos_theta_i = -dot(r, n)      # Cosine of the angle of incidence
@@ -146,8 +156,8 @@ function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_
     if sin2_theta_t > 1.0
         reflect_dir = normalize(r - 2.0 * dot(r, n) * n)  # Compute reflection direction
         reflect_ray = Ray(hitrec.intersection, reflect_dir)
-        reflect_color, _ = traceray(scene, reflect_ray, tmin, tmax, rec_depth + 1)
-        return reflect_color  # Return reflection color if TIR occurs
+        reflect_color, ED = traceray(scene, reflect_ray, tmin, tmax, rec_depth + 1)
+        return reflect_color, ED  # Return reflection color if TIR occurs
     end
 
     # Compute refracted direction
@@ -158,9 +168,9 @@ function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_
     refract_ray = Ray(hitrec.intersection, refract_dir)
 
     # Recursively trace the refracted ray
-    refract_color, _ = traceray(scene, refract_ray, tmin, tmax, rec_depth + 1, ior)
+    refract_color, ED = traceray(scene, refract_ray, tmin, tmax, rec_depth + 1, ior)
 
-    return refract_color  # Return refraction contribution
+    return refract_color, ED  # Return refraction contribution
 end
 
 ##############################
@@ -249,12 +259,20 @@ end
 
 # Ray-Box Intersection
 function ray_intersects_aabb(ray, bbox::AABB)
-    tmin = (bbox.min .- ray.origin) ./ ray.direction  # Vectorized operation
-    tmax = (bbox.max .- ray.origin) ./ ray.direction  # Vectorized operation
-    tmin, tmax = minimum.(tmin, tmax), maximum.(tmin, tmax)  # Correct ordering
-    tmin_max = maximum(tmin)  # Largest tmin
-    tmax_min = minimum(tmax)  # Smallest tmax
-    return tmin_max <= tmax_min  # Intersection condition
+    # Calculate tmin and tmax for each axis
+    t1 = (bbox.min .- ray.origin) ./ ray.direction
+    t2 = (bbox.max .- ray.origin) ./ ray.direction
+
+    # Ensure t1 is the smaller and t2 is the larger value for each axis
+    tmin = min(t1, t2)  # Smallest t for each axis
+    tmax = max(t1, t2)  # Largest t for each axis
+
+    # Find the largest tmin and the smallest tmax
+    tmin_max = maximum(tmin)  # Largest tmin across all axes
+    tmax_min = minimum(tmax)  # Smallest tmax across all axes
+
+    # Intersection occurs if tmin_max <= tmax_min
+    return tmin_max <= tmax_min && tmax_min >= 0
 end
 
 # Construct BVH
@@ -592,9 +610,10 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     return color / aa_samples^2
 end
 
-# Rays.main(7, 1, 300, 300, "results/Anti_Aliasing_Results")
+
+# Rays.main(300, 300, "results/Anti_Aliasing_Results")
 function main(height, width, out_dir, AA_type="none", sample_type="uniform", 
-                AA_samples=1, thickness=0.0, detect_shadows=true)
+                AA_samples=1, thickness=0.0, detect_shadows=true; bvh_toggle=false)
     """
 Parameters
     AA_type: Type of Anti-Aliasing to perform.
@@ -611,19 +630,18 @@ Parameters
     detect_shadows: boolean which controls if edges for shadows are included. It is 
                     recommended to turn off when using directional lighting.
     """
-    scene, camera = 7, 1
+    @time begin
+    scene_name, camera = "refract1", 1
+    global use_bvh
+    use_bvh = bvh_toggle
 
     # get the requested scene and camera
-    scene = TestScenes.get_scene(scene)
+    scene = TestScenes.get_scene(scene_name)
     camera = TestScenes.get_camera(camera, height, width)
-
-    # Construct a BVH for the objects in the scene
-    bvh = construct_bvh(scene.objects)
 
     # Create a blank canvas to store the image:
     canvas = zeros(RGB{Float32}, height, width)
     objs = Array{Edge_Storage}(undef, height, width)
-
 
     if AA_type == "full"
         # Anti-Alias across the entire image. 
@@ -651,13 +669,15 @@ Parameters
         for i in 1:height
             for j in 1:width
                 if (mask[i, j] == true)
-                    canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
+                    # canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
+                    canvas[i,j] = RGB{Float32}(0,1,0)
                 end
             end
         end
     elseif AA_type == "none"
         # standard ray tracing
         for i in 1:height
+            println("Row $i complete.")
             for j in 1:width
                 tmin = 1
                 tmax = Inf
@@ -669,15 +689,21 @@ Parameters
     end
     # Determine filename to save as
     if AA_type == "none"
-        outfile = "$out_dir/no_anti_aliasing-$sample_type.png"
+        outfile = "$out_dir/$scene_name/no_anti_aliasing-$sample_type.png"
     elseif startswith(AA_type, "full_")
-        outfile = "$out_dir/full_AA-$sample_type-N=$AA_samples.png"
+        outfile = "$out_dir/$scene_name/full_AA-$sample_type-N=$AA_samples.png"
     else
-        outfile = "$out_dir/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
+        outfile = "$out_dir/$scene_name/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
     end
     # clamp canvas to valid range:
     clamp01!(canvas)
+    # create directory and save image
+    dir_name = dirname(outfile)
+    if !isdir(dir_name)
+        mkpath(dir_name)
+    end
     save(outfile, canvas)
+end
 end
 
 

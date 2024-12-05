@@ -50,8 +50,22 @@ end
 mutable struct Material
     shading_model::ShadingModel
     mirror_coeff::Float64
-    texture::Union{Texture,Nothing}
-    diffuse_color::Union{RGB{Float32},Nothing}
+    texture::Union{Texture, Nothing}
+    diffuse_color::Union{RGB{Float32}, Nothing}
+    transparency::Float64
+    ior::Float64
+
+    # Define constructor with default values
+    function Material(
+        shading_model::ShadingModel, 
+        mirror_coeff::Float64, 
+        texture::Union{Texture, Nothing}, 
+        diffuse_color::Union{RGB{Float32}, Nothing},
+        transparency::Float64 = 0.0, 
+        ior::Float64 = 1.5, 
+    )
+        new(shading_model, mirror_coeff, texture, diffuse_color, transparency, ior)
+    end
 end
 
 """ Get the diffuse color of a material; if the material is textured,

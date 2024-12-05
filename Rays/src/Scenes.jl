@@ -81,10 +81,11 @@ function ray_intersect(ray::Ray, object::Sphere)
     normal = normalize(intersection - object.center)
 
     # Calculate texture coordinates
-    x, y, z = (intersection .- object.center) ./ object.radius
-    u = (1 / pi) * acos(y)
-    v = atan(z, x)
-    uv = Vec2(u, v)
+    # x, y, z = (intersection .- object.center) ./ object.radius
+    # u = (1 / pi) * acos(y)
+    # v = atan(z, x)
+    # uv = Vec2(u, v)
+    uv = nothing
 
     # Return new HitRecord with intersection data
     return HitRecord(t, intersection, normal, uv, object)

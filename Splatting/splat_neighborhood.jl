@@ -205,7 +205,7 @@ end
 function control_panel()
 
     infile = "imgs/source/landscape.jpg"
-    out_dir = "imgs/2_powers_neighborhood_splats"
+    out_dir = "imgs/neighborhood_splats_powers_of_2"
 
     batch_size = 0.1
     epochs = 100

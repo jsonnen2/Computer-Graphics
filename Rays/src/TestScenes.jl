@@ -43,18 +43,6 @@ function camera_3(img_height, img_width)
 end
 
 
-
-cameras = [camera_1, camera_2, camera_3]
-
-function get_camera(i, img_height, img_width)
-    cameras[i](img_height, img_width)
-end
-
-
-function get_scene(i)
-    scenes[i]()
-end
-
 function scene_1()
     bg = RGB{Float32}(0.95, 0.95, 0.95)
     objs = [Sphere(Vec3(0, 0, -5), 1, Material(Flat(), 0.0, nothing, RGB{Float32}(0.73, 0, 0.17)))]
@@ -108,9 +96,10 @@ function scene_4()
 end
 
 function scene_5()
+    # Refraction scene 
     bg = black
 
-    mat = Material(Lambertian(), 0.0, nothing, white)
+    mat = Material(Lambertian(), 0.5, nothing, white, 0.5)
 
     objs = [
         Sphere(Vec3(-1, 0, -6), 0.5, mat),
@@ -180,7 +169,7 @@ function scene_7()
     append!(objs, mesh_helper(bunny, bunny_mat, 1.0, Vec3(0.2, 0, -5)))
 
     # add a cube
-    cube_mat = Material(Lambertian(), 0.6, nothing, white)
+    cube_mat = Material(Lambertian(), 0.0, nothing, white)
     append!(objs, mesh_helper(cube_mesh(), cube_mat, 10.0, Vec3(-11.2, 0, 0)))
 
     lights = [
@@ -195,6 +184,30 @@ function scene_7()
         # # DirectionalLight(0.3, Vec3(0, 1, 0))
         AreaLight(1.5, Vec3(2, 2, -2), Vec3(0, -1, 0), Vec3(0, 0, 1))
         ]
+
+    Scene(bg, objs, lights)
+
+end
+
+function wizard_tower()
+    bg = black
+    objs = []
+
+    # add a wizard tower:
+    tower_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.6, 0.5, 0.5))
+    tower = read_obj("data/wizard_tower.obj")
+    append!(objs, mesh_helper(tower, tower_mat, 1.0, Vec3(0.2, 0, -5)))
+
+    # add a cube
+    cube_mat = Material(Lambertian(), 0.6, nothing, white)
+    append!(objs, mesh_helper(cube_mesh(), cube_mat, 10.0, Vec3(-11.2, 0, 0)))
+
+    lights = [
+        PointLight(0.5, Vec3(-1, -2, -5)),  # Light 1
+        PointLight(0.7, Vec3(10, 5, -8)),  # Light 2
+        PointLight(0.6, Vec3(5, 10, -12)), # Light 3
+        PointLight(0.4, Vec3(-5, 3, -15)), # Light 4
+    ]
 
     Scene(bg, objs, lights)
 
@@ -267,6 +280,24 @@ function scene_11()
     Scene(bg, objs, lights)
 end
 
-scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7, scene_8, scene_9, scene_10, scene_11]
+cameras = [camera_1, camera_2, camera_3]
+
+function get_camera(i, img_height, img_width)
+    cameras[i](img_height, img_width)
+end
+
+
+scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7, 
+        scene_8, scene_9, scene_10, scene_11, wizard_tower]
+
+function get_scene(scene::String)
+    scene_names = [
+        "scene_1", "scene_2", "scene_3", "scene_4", "refract1", 
+        "scene_6", "bunny", "scene_8", "scene_9", "scene_10", "refract2",
+        "wizard_tower"
+    ]
+    i = findfirst(x -> x == scene, scene_names)
+    return scenes[i]()
+end
 
 end # module TestScenes
