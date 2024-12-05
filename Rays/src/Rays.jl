@@ -36,7 +36,7 @@ use_bvh = false
 
 mutable struct Edge_Storage
     obj_id::Vector{Any}
-    num_shadows::Int
+    num_shadows::Vector{Int}
 end
 
 # Ray-Scene intersection:
@@ -62,9 +62,6 @@ function closest_intersect(objects::Array{Any,1}, ray::Ray, tmin, tmax)
         end
     end
     return closest_hitrec # Return closest intersection found, or nothing if no intersections are found
-    #############
-    # END TODO 2
-    #############
 end
 
 """ Trace a ray from orig along ray through scene, using Whitted recursive raytracing 
@@ -79,7 +76,7 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
     end
 
     if closest_hitrec === nothing
-        return scene.background, Edge_Storage([nothing], 0)
+        return scene.background, Edge_Storage([nothing], [0])
     end
     # define variables
     object = closest_hitrec.object
@@ -88,10 +85,10 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
     mirror_coeff = material.mirror_coeff
 
     local_color, num_shadows = determine_color(shader, object.material, ray, closest_hitrec, scene)
-    edge_detect = Edge_Storage([object], num_shadows)
+    edge_detect = Edge_Storage([object], [num_shadows])
 
     ##############################
-    # TODO 6 - mirror reflection #
+    # mirror reflection #
     ##############################
     # Your implementation:
     if material.mirror_coeff > 0 && rec_depth <= 8
@@ -106,9 +103,11 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
         # recurse on reflected ray
         reflect_color, ED = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
         # Merge. overwrite shadow. Append old object to edge_detect_reflect
-        # push!(ED.obj_id, object)
-        # ED.num_shadows = num_shadows
-        # edge_detect = ED
+        if material.transparency <= 0
+            push!(ED.obj_id, edge_detect.obj_id[1])
+            push!(ED.num_shadows, edge_detect.num_shadows[1])
+            edge_detect = ED
+        end
 
         # scale according to mirror_coeff
         local_color = (1 - mirror_coeff) * local_color + mirror_coeff * reflect_color
@@ -120,12 +119,12 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
     if material.transparency > 0 && rec_depth <= 8
         refract_color, ED = refract_ray(scene, ray, closest_hitrec, tmin, tmax, rec_depth, material.ior)
         # Merge. overwrite shadow. Append old object to edge_detect_reflect
-        # push!(ED.obj_id, object)
-        # ED.num_shadows = num_shadows # TODO: sus
-        # edge_detect = ED
+        push!(ED.obj_id, edge_detect.obj_id[1])
+        push!(ED.num_shadows, edge_detect.num_shadows[1])
+        edge_detect = ED
 
         # scale according to transparency
-        local_color = (1 - transparency) * local_color + transparency * refract_color
+        local_color = (1 - material.transparency) * local_color + material.transparency * refract_color
     end
 
     return local_color, edge_detect
@@ -168,7 +167,7 @@ function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_
     refract_ray = Ray(hitrec.intersection, refract_dir)
 
     # Recursively trace the refracted ray
-    refract_color, ED = traceray(scene, refract_ray, tmin, tmax, rec_depth + 1, ior)
+    refract_color, ED = traceray(scene, refract_ray, tmin, tmax, rec_depth + 1)
 
     return refract_color, ED  # Return refraction contribution
 end
@@ -523,10 +522,8 @@ end
 
 function edge_detection!(
         objs::Matrix{Edge_Storage}, 
-        canvas::Union{Matrix{ColorTypes.RGB{Float32}},Nothing}=nothing,
         proximity::Float64=0.0,
-        detect_shadows::Bool=false,
-        edit_canvas::Bool=false)
+        detect_shadows::Bool=false)
 
     height, width = size(objs)
     mask = falses(height, width)
@@ -538,11 +535,19 @@ function edge_detection!(
 
             # Detect shadow edges
             if detect_shadows
-                if (objs[i, j].num_shadows !== objs[i-1, j].num_shadows) ||
-                   (objs[i, j].num_shadows !== objs[i, j-1].num_shadows) ||
-                   (objs[i, j].num_shadows !== objs[i-1, j-1].num_shadows)
-                    
-                    edge = true
+                s1 = objs[i,j].num_shadows
+                s2 = objs[i-1,j].num_shadows
+                s3 = objs[i,j-1].num_shadows
+                s4 = objs[i-1,j-1].num_shadows
+                min = minimum([length(s1), length(s2), length(s3), length(s4)])
+
+                for n in 1:min
+                    if (s1[end-n+1] !== s4[end-n+1]) ||
+                       (s2[end-n+1] !== s4[end-n+1]) ||
+                       (s3[end-n+1] !== s4[end-n+1])
+                        
+                        edge = true
+                    end
                 end
             end
 
@@ -553,24 +558,19 @@ function edge_detection!(
             id4 = objs[i, j].obj_id
             min = minimum([length(id1), length(id2), length(id3), length(id4)])
 
-            # Detect all other edge types
+            # Detect edges starting at the end of the array
             for n in 1:min
-                if (id1[n] !== id4[n]) ||
-                   (id2[n] !== id4[n]) ||
-                   (id3[n] !== id4[n])
+                if (id1[end-n+1] !== id4[end-n+1]) ||
+                   (id2[end-n+1] !== id4[end-n+1]) ||
+                   (id3[end-n+1] !== id4[end-n+1])
                     
                     edge = true
                 end
             end
 
-            if edit_canvas
-                if edge
-                    center = (i, j)
-                    draw_circle!(mask, center, proximity, true)
-                    if canvas !== nothing
-                        draw_circle!(canvas, center, proximity, RGB{Float32}(0, 1, 0))
-                    end
-                end
+            if edge
+                center = (i, j)
+                draw_circle!(mask, center, proximity, true)
             end
         end
     end
@@ -663,21 +663,19 @@ Parameters
             end
         end
         # generate boolean mask
-        mask = edge_detection!(objs, canvas, thickness, detect_shadows, true)
-    
+        mask = edge_detection!(objs, thickness, detect_shadows)
+        
         # Anti-Alias according to mask
         for i in 1:height
             for j in 1:width
                 if (mask[i, j] == true)
-                    # canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
-                    canvas[i,j] = RGB{Float32}(0,1,0)
+                    canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
                 end
             end
         end
     elseif AA_type == "none"
         # standard ray tracing
         for i in 1:height
-            println("Row $i complete.")
             for j in 1:width
                 tmin = 1
                 tmax = Inf

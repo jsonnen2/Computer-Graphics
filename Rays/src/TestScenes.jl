@@ -98,12 +98,11 @@ end
 function scene_5()
     # Refraction scene 
     bg = black
-
     mat = Material(Lambertian(), 0.5, nothing, white, 0.5)
 
     objs = [
         Sphere(Vec3(-1, 0, -6), 0.5, mat),
-        Sphere(Vec3(1, 0, -5), 0.5, Material(Lambertian(), 0.0, nothing, white)),
+        Sphere(Vec3(1, 0, -5), 0.5, mat),
         Sphere(Vec3(-1, 0, -4), 0.5, mat),
         Sphere(Vec3(0, -5001, 0), 5000, Material(Lambertian(), 0.0, nothing, white)) # ground
     ]
