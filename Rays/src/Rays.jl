@@ -567,7 +567,7 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     if (aa_mode == "uniform")
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
-                view_ray = Cameras.pixel_to_ray(camera, i + (p - 0.5) / aa_samples, j + (q - 0.5) / aa_samples)
+                view_ray = Cameras.pixel_to_ray(camera, i + (p - 0.5) / aa_samples - 0.5, j + (q - 0.5) / aa_samples - 0.5)
                 sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
                 color = color + sub_px_color
             end
@@ -583,7 +583,7 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     elseif (aa_mode == "stratified")
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
-                view_ray = Cameras.pixel_to_ray(camera, i + (p - rand(Float32)) / aa_samples, j + (q - rand(Float32)) / aa_samples)
+                view_ray = Cameras.pixel_to_ray(camera, i + (p - (rand(Float32) - 0.5) / 2) / aa_samples - 0.5, j + (q - (rand(Float32) - 0.5) / 2) / aa_samples - 0.5)
                 sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
                 color = color + sub_px_color
             end
@@ -670,10 +670,12 @@ Parameters
     # Determine filename to save as
     if AA_type == "none"
         outfile = "$out_dir/no_anti_aliasing-$sample_type.png"
-    elseif startswith(AA_type, "full_")
+    elseif AA_type == "full"
         outfile = "$out_dir/full_AA-$sample_type-N=$AA_samples.png"
-    else
+    elseif AA_type == "edge_detect"
         outfile = "$out_dir/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
+    else
+        error("Invalid AA type input")
     end
     # clamp canvas to valid range:
     clamp01!(canvas)
