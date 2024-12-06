@@ -521,9 +521,9 @@ end
 
 
 function edge_detection!(
-        objs::Matrix{Edge_Storage}, 
-        proximity::Float64=0.0,
-        detect_shadows::Bool=false)
+    objs::Matrix{Edge_Storage},
+    proximity::Float64=0.0,
+    detect_shadows::Bool=false)
 
     height, width = size(objs)
     mask = falses(height, width)
@@ -535,17 +535,17 @@ function edge_detection!(
 
             # Detect shadow edges
             if detect_shadows
-                s1 = objs[i,j].num_shadows
-                s2 = objs[i-1,j].num_shadows
-                s3 = objs[i,j-1].num_shadows
-                s4 = objs[i-1,j-1].num_shadows
+                s1 = objs[i, j].num_shadows
+                s2 = objs[i-1, j].num_shadows
+                s3 = objs[i, j-1].num_shadows
+                s4 = objs[i-1, j-1].num_shadows
                 min = minimum([length(s1), length(s2), length(s3), length(s4)])
 
                 for n in 1:min
                     if (s1[end-n+1] !== s4[end-n+1]) ||
                        (s2[end-n+1] !== s4[end-n+1]) ||
                        (s3[end-n+1] !== s4[end-n+1])
-                        
+
                         edge = true
                     end
                 end
@@ -563,7 +563,7 @@ function edge_detection!(
                 if (id1[end-n+1] !== id4[end-n+1]) ||
                    (id2[end-n+1] !== id4[end-n+1]) ||
                    (id3[end-n+1] !== id4[end-n+1])
-                    
+
                     edge = true
                 end
             end
@@ -590,14 +590,14 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
                 color = color + sub_px_color
             end
         end
-    # Random AA
+        # Random AA
     elseif (aa_mode == "random")
         for p in 1:aa_samples^2
             view_ray = Cameras.pixel_to_ray(camera, i - rand(Float32), j - rand(Float32))
             sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
             color = color + sub_px_color
         end
-    # Stratified AA
+        # Stratified AA
     elseif (aa_mode == "stratified")
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
@@ -612,8 +612,8 @@ end
 
 
 # Rays.main(300, 300, "results/Anti_Aliasing_Results")
-function main(height, width, out_dir, AA_type="none", sample_type="uniform", 
-                AA_samples=1, thickness=0.0, detect_shadows=true; bvh_toggle=false)
+function main(height, width, out_dir, AA_type="none", sample_type="uniform",
+    AA_samples=1, thickness=0.0, detect_shadows=true; bvh_toggle=false)
     """
 Parameters
     AA_type: Type of Anti-Aliasing to perform.
@@ -631,78 +631,78 @@ Parameters
                     recommended to turn off when using directional lighting.
     """
     @time begin
-    scene_name, camera = "wizard_tower", 2
-    global use_bvh
-    use_bvh = bvh_toggle
+        scene_name, camera = "wizard_cat", 2
+        global use_bvh
+        use_bvh = bvh_toggle
 
-    # get the requested scene and camera
-    scene = TestScenes.get_scene(scene_name)
-    camera = TestScenes.get_camera(camera, height, width)
+        # get the requested scene and camera
+        scene = TestScenes.get_scene(scene_name)
+        camera = TestScenes.get_camera(camera, height, width)
 
-    # Create a blank canvas to store the image:
-    canvas = zeros(RGB{Float32}, height, width)
-    objs = Array{Edge_Storage}(undef, height, width)
+        # Create a blank canvas to store the image:
+        canvas = zeros(RGB{Float32}, height, width)
+        objs = Array{Edge_Storage}(undef, height, width)
 
-    if AA_type == "full"
-        # Anti-Alias across the entire image. 
-        for i in 1:height
-            for j in 1:width
-                canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
-            end
-        end
-    elseif AA_type == "edge_detect"
-        # generate the data to be able to edge detect 
-        for i in 1:height
-            for j in 1:width
-                tmin = 1
-                tmax = Inf
-                view_ray = Cameras.pixel_to_ray(camera, i, j)
-                color, edge_stor = traceray(scene, view_ray, tmin, tmax)
-                canvas[i, j] = color
-                objs[i, j] = edge_stor
-            end
-        end
-        # generate boolean mask
-        mask = edge_detection!(objs, thickness, detect_shadows)
-        
-        # Anti-Alias according to mask
-        for i in 1:height
-            for j in 1:width
-                if (mask[i, j] == true)
+        if AA_type == "full"
+            # Anti-Alias across the entire image. 
+            for i in 1:height
+                for j in 1:width
                     canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
                 end
             end
-        end
-    elseif AA_type == "none"
-        # standard ray tracing
-        for i in 1:height
-            println("Row $i complete.")
-            for j in 1:width
-                tmin = 1
-                tmax = Inf
-                view_ray = Cameras.pixel_to_ray(camera, i, j)
-                color, edge_stor = traceray(scene, view_ray, tmin, tmax)
-                canvas[i, j] = color
+        elseif AA_type == "edge_detect"
+            # generate the data to be able to edge detect 
+            for i in 1:height
+                for j in 1:width
+                    tmin = 1
+                    tmax = Inf
+                    view_ray = Cameras.pixel_to_ray(camera, i, j)
+                    color, edge_stor = traceray(scene, view_ray, tmin, tmax)
+                    canvas[i, j] = color
+                    objs[i, j] = edge_stor
+                end
+            end
+            # generate boolean mask
+            mask = edge_detection!(objs, thickness, detect_shadows)
+
+            # Anti-Alias according to mask
+            for i in 1:height
+                for j in 1:width
+                    if (mask[i, j] == true)
+                        canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
+                    end
+                end
+            end
+        elseif AA_type == "none"
+            # standard ray tracing
+            for i in 1:height
+                println("Row $i complete.")
+                for j in 1:width
+                    tmin = 1
+                    tmax = Inf
+                    view_ray = Cameras.pixel_to_ray(camera, i, j)
+                    color, edge_stor = traceray(scene, view_ray, tmin, tmax)
+                    canvas[i, j] = color
+                end
             end
         end
+        # Determine filename to save as
+        if AA_type == "none"
+            outfile = "$out_dir/$scene_name/no_anti_aliasing-$sample_type.png"
+        elseif startswith(AA_type, "full_")
+            outfile = "$out_dir/$scene_name/full_AA-$sample_type-N=$AA_samples.png"
+        else
+            outfile = "$out_dir/$scene_name/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
+        end
+        # clamp canvas to valid range:
+        clamp01!(canvas)
+        # create directory and save image
+        dir_name = dirname(outfile)
+        if !isdir(dir_name)
+            mkpath(dir_name)
+        end
+        save(outfile, canvas)
     end
-    # Determine filename to save as
-    if AA_type == "none"
-        outfile = "$out_dir/$scene_name/no_anti_aliasing-$sample_type.png"
-    elseif startswith(AA_type, "full_")
-        outfile = "$out_dir/$scene_name/full_AA-$sample_type-N=$AA_samples.png"
-    else
-        outfile = "$out_dir/$scene_name/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
-    end
-    # clamp canvas to valid range:
-    clamp01!(canvas)
-    # create directory and save image
-    dir_name = dirname(outfile)
-    if !isdir(dir_name)
-        mkpath(dir_name)
-    end
-    save(outfile, canvas)
-end
 end
 
 

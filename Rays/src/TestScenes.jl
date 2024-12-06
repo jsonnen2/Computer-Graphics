@@ -182,7 +182,7 @@ function scene_7()
         # DirectionalLight(0.3, Vec3(1, 1, 1)),
         # # DirectionalLight(0.3, Vec3(0, 1, 0))
         AreaLight(1.5, Vec3(2, 2, -2), Vec3(0, -1, 0), Vec3(0, 0, 1))
-        ]
+    ]
 
     Scene(bg, objs, lights)
 
@@ -279,6 +279,35 @@ function scene_11()
     Scene(bg, objs, lights)
 end
 
+function wizard_cat()
+    bg = black
+    objs = []
+
+    # add a wizardcat:
+    wizardcat_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.6, 0.5, 0.5))
+    wizardcat = read_obj("data/wizardcat.obj")
+    append!(objs, mesh_helper(wizardcat, wizardcat_mat, 1.0, Vec3(0.2, -2, -6)))
+
+    # add wizardcat's orb (glass sphere)
+    sphere_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.2, 0.6, 1.0), 0.9, 1.5)
+    append!(objs, mesh_helper(sphere_mesh(32, 16), sphere_mat, 1.0, Vec3(0.1, -1, -3)))
+    lights = [
+        #PointLight(0.5, Vec3(1, 2, -5)),
+        #PointLight(0.5, Vec3(-1, -2, -5)),  # Light 1
+        #PointLight(0.7, Vec3(10, 5, -8)),  # Light 2
+        #PointLight(0.6, Vec3(5, 10, -12)), # Light 3
+        #PointLight(0.4, Vec3(-5, 3, -15)), # Light 4
+        #DirectionalLight(0.3, Vec3(0, 0, 1)),
+        #DirectionalLight(0.3, Vec3(0, 1, 1)),
+        #DirectionalLight(0.3, Vec3(1, 1, 1)),
+        #DirectionalLight(0.3, Vec3(0, 1, 0)),
+        AreaLight(1.5, Vec3(1, 3, -2), Vec3(1, -3, 0), Vec3(0, 0, 1))
+    ]
+
+    Scene(bg, objs, lights)
+
+end
+
 cameras = [camera_1, camera_2, camera_3]
 
 function get_camera(i, img_height, img_width)
@@ -286,14 +315,14 @@ function get_camera(i, img_height, img_width)
 end
 
 
-scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7, 
-        scene_8, scene_9, scene_10, scene_11, wizard_tower]
+scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7,
+    scene_8, scene_9, scene_10, scene_11, wizard_tower, wizard_cat]
 
 function get_scene(scene::String)
     scene_names = [
-        "scene_1", "scene_2", "scene_3", "scene_4", "refract1", 
+        "scene_1", "scene_2", "scene_3", "scene_4", "refract1",
         "scene_6", "bunny", "scene_8", "scene_9", "scene_10", "refract2",
-        "wizard_tower"
+        "wizard_tower", "wizard_cat"
     ]
     i = findfirst(x -> x == scene, scene_names)
     return scenes[i]()
