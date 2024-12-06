@@ -631,7 +631,7 @@ Parameters
                     recommended to turn off when using directional lighting.
     """
     @time begin
-    scene_name, camera = "refract1", 1
+    scene_name, camera = "wizard_tower", 2
     global use_bvh
     use_bvh = bvh_toggle
 
@@ -676,6 +676,7 @@ Parameters
     elseif AA_type == "none"
         # standard ray tracing
         for i in 1:height
+            println("Row $i complete.")
             for j in 1:width
                 tmin = 1
                 tmax = Inf
