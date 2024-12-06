@@ -42,6 +42,22 @@ function camera_3(img_height, img_width)
         img_width) # canv_width::Int)
 end
 
+function camera_4(img_height, img_width)
+    eye = Vec3(0.125,6.75,20)
+    view = Vec3(0, -1, -4)
+    up = Vec3(0, 1, 0)
+    focal = 8.0
+    Cameras.PerspectiveCamera(eye, view, up, focal, img_height, img_width)
+end
+
+function camera_5(img_height, img_width)
+    eye = Vec3(2, 8, 0)
+    view = Vec3(0, 0, -1)
+    up = Vec3(0, 1, 0)
+    focal = 0.125
+    Cameras.PerspectiveCamera(eye, view, up, focal, img_height, img_width)
+end
+
 
 function scene_1()
     bg = RGB{Float32}(0.95, 0.95, 0.95)
@@ -138,14 +154,6 @@ function scene_6()
 end
 
 
-#push!(objs, Sphere(Vec3(0, 0, -605), 600, Material(Lambertian(), 0.5, nothing, white)))
-
-#push!(objs, Sphere(Vec3(0, -1, -3), 1, RGB{Float32}(1.0, 0.0, 0.0), 500, 0.2))
-#push!(objs, Sphere(Vec3(2, 0, -4), 1, RGB{Float32}(0.0, 0.0, 1.0), 500, 0.3))
-#push!(objs, Sphere(Vec3(-2, 0, -4), 1, RGB{Float32}(0.0, 1.0, 0.0), 10, 0.4))
-#push!(objs, Sphere(Vec3(0, -5001, 0), 5000, RGB{Float32}(1.0, 1.0, 0.0), 1000, 0.5))
-
-
 """ Take the OBJMesh mesh and return an array of Triangles from the mesh
 with the given material, after scaling the mesh positions by scale and moving
 them by translation """
@@ -168,7 +176,7 @@ function scene_7()
     append!(objs, mesh_helper(bunny, bunny_mat, 1.0, Vec3(0.2, 0, -5)))
 
     # add a cube
-    cube_mat = Material(Lambertian(), 0.0, nothing, white)
+    cube_mat = Material(Lambertian(), 0.5, nothing, white)
     append!(objs, mesh_helper(cube_mesh(), cube_mat, 10.0, Vec3(-11.2, 0, 0)))
 
     lights = [
@@ -181,7 +189,7 @@ function scene_7()
         # # DirectionalLight(0.3, Vec3(0, 1, 1)),
         # DirectionalLight(0.3, Vec3(1, 1, 1)),
         # # DirectionalLight(0.3, Vec3(0, 1, 0))
-        AreaLight(1.5, Vec3(2, 2, -2), Vec3(0, -1, 0), Vec3(0, 0, 1))
+        AreaLight(1, Vec3(2, 2, -2), Vec3(0, -1, 0), Vec3(0, 0, 1))
     ]
 
     Scene(bg, objs, lights)
@@ -197,15 +205,32 @@ function wizard_tower()
     tower = read_obj("data/wizard_tower.obj")
     append!(objs, mesh_helper(tower, tower_mat, 1.0, Vec3(0.2, 0, -5)))
 
-    # add a cube
-    cube_mat = Material(Lambertian(), 0.6, nothing, white)
-    append!(objs, mesh_helper(cube_mesh(), cube_mat, 10.0, Vec3(-11.2, 0, 0)))
+    lights = [
+        PointLight(0.5, Vec3(-1, -2, -5)),  # Light 1
+        PointLight(0.7, Vec3(10, 5, -8)),  # Light 2
+        PointLight(0.6, Vec3(5, 10, -12)), # Light 3
+        PointLight(0.4, Vec3(-5, 3, -15)), # Light 4
+    ]
+
+    Scene(bg, objs, lights)
+
+end
+
+function wizard_hat()
+    bg = black
+    objs = []
+
+    # add a wizard tower:
+    tower_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(128/255, 0, 128/255))
+    tower = read_obj("data/wizard_hat.obj")
+    append!(objs, mesh_helper(tower, tower_mat, 1.0, Vec3(0.2, 0, -5)))
 
     lights = [
         PointLight(0.5, Vec3(-1, -2, -5)),  # Light 1
         PointLight(0.7, Vec3(10, 5, -8)),  # Light 2
         PointLight(0.6, Vec3(5, 10, -12)), # Light 3
         PointLight(0.4, Vec3(-5, 3, -15)), # Light 4
+        AreaLight(0.5, Vec3(-2, 10, 5), Vec3(0,0,0), Vec3(1,1,1))
     ]
 
     Scene(bg, objs, lights)
@@ -292,15 +317,6 @@ function wizard_cat()
     sphere_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.2, 0.6, 1.0), 0.9, 1.5)
     append!(objs, mesh_helper(sphere_mesh(32, 16), sphere_mat, 1.0, Vec3(0.1, -1, -3)))
     lights = [
-        #PointLight(0.5, Vec3(1, 2, -5)),
-        #PointLight(0.5, Vec3(-1, -2, -5)),  # Light 1
-        #PointLight(0.7, Vec3(10, 5, -8)),  # Light 2
-        #PointLight(0.6, Vec3(5, 10, -12)), # Light 3
-        #PointLight(0.4, Vec3(-5, 3, -15)), # Light 4
-        #DirectionalLight(0.3, Vec3(0, 0, 1)),
-        #DirectionalLight(0.3, Vec3(0, 1, 1)),
-        #DirectionalLight(0.3, Vec3(1, 1, 1)),
-        #DirectionalLight(0.3, Vec3(0, 1, 0)),
         AreaLight(1.5, Vec3(1, 3, -2), Vec3(1, -3, 0), Vec3(0, 0, 1))
     ]
 
@@ -308,21 +324,21 @@ function wizard_cat()
 
 end
 
-cameras = [camera_1, camera_2, camera_3]
+cameras = [camera_1, camera_2, camera_3, camera_4, camera_5]
 
 function get_camera(i, img_height, img_width)
     cameras[i](img_height, img_width)
 end
 
 
-scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7,
-    scene_8, scene_9, scene_10, scene_11, wizard_tower, wizard_cat]
+scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7, 
+        scene_8, scene_9, scene_10, scene_11, wizard_tower, wizard_hat, wizard_cat]
 
 function get_scene(scene::String)
     scene_names = [
         "scene_1", "scene_2", "scene_3", "scene_4", "refract1",
         "scene_6", "bunny", "scene_8", "scene_9", "scene_10", "refract2",
-        "wizard_tower", "wizard_cat"
+        "wizard_tower", "wizard_hat", "wizard_cat"
     ]
     i = findfirst(x -> x == scene, scene_names)
     return scenes[i]()
