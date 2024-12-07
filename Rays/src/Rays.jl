@@ -461,6 +461,37 @@ function shade_light(shader::Lambertian, material::Material, ray::Ray, hitrec, l
     return c, 0
 end
 
+function shade_light(shader::BlinnPhong, material::Material, ray::Ray, hitrec, light::AreaLight, scene)
+    dim = 5
+
+    surfaceNormal = hitrec.normal # Get surface normal
+    I = light.intensity / dim^2 # Get light intensity
+    diffuseColor = get_diffuse(material, hitrec.uv) # Get diffuse color
+    specularColor = shader.specular_color # Get specular color
+    specularExponent = shader.specular_exp # Get specular exponent
+
+    r = []
+    for p in 0:dim-1
+        for q in 0:dim-1
+            light_sample = light.position + light.vec_a * (p + rand(Float32)) / dim + light.vec_b * (q + rand(Float32)) / dim
+            push!(r, Vec3(light_sample[1], light_sample[2], light_sample[3]))
+        end
+    end
+
+    c = RGB(0.0, 0.0, 0.0)
+    for i in 1:dim^2
+        lightDirection = normalize(light_direction(light, hitrec.intersection, r[i])) # Get light direction and normalize It
+        viewDirection = normalize(-ray.direction) # Get viewing direction and normalize it
+        halfVector = normalize(viewDirection + lightDirection) # Calculate the half vector for specular reflection
+
+        # Calculate specular reflection using the diffuse and specular components
+        c += diffuseColor * I * max(0, dot(surfaceNormal, lightDirection))
+        c += specularColor * I * max(0, dot(surfaceNormal, halfVector))^specularExponent
+    end
+
+    return c, 0
+end
+
 
 """ Determine whether point is in shadow wrt light """
 ###########

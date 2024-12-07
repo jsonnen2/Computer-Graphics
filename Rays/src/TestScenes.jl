@@ -314,7 +314,7 @@ function wizard_cat()
     append!(objs, mesh_helper(wizardcat, wizardcat_mat, 1.0, Vec3(0.2, -2, -6)))
 
     # add wizardcat's orb (glass sphere)
-    sphere_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.2, 0.6, 1.0), 0.9, 1.5)
+    sphere_mat = Material(BlinnPhong(RGB(0.835, 0.212, 0.0), 64), 0.0, nothing, RGB{Float32}(0.1, 0.3, 0.5), 0.6, 1.5)
     append!(objs, mesh_helper(sphere_mesh(32, 16), sphere_mat, 1.0, Vec3(0.1, -1, -3)))
     lights = [
         AreaLight(1.5, Vec3(1, 3, -2), Vec3(1, -3, 0), Vec3(0, 0, 1))
