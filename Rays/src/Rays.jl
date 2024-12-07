@@ -32,9 +32,11 @@ import .Scenes.HitRecord
 import .Cameras
 import .TestScenes
 
+use_bvh = false
+
 mutable struct Edge_Storage
     obj_id::Vector{Any}
-    num_shadows::Int
+    num_shadows::Vector{Int}
 end
 
 # Ray-Scene intersection:
@@ -60,22 +62,21 @@ function closest_intersect(objects::Array{Any,1}, ray::Ray, tmin, tmax)
         end
     end
     return closest_hitrec # Return closest intersection found, or nothing if no intersections are found
-    #############
-    # END TODO 2
-    #############
 end
 
 """ Trace a ray from orig along ray through scene, using Whitted recursive raytracing 
 limited to rec_depth recursive calls. """
-function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, transparency=0.5, bvh=nothing)
-    if bvh !== nothing
+function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
+
+    if use_bvh == true
+        bvh = construct_bvh(scene.objects)
         closest_hitrec = traverse_bvh(bvh, ray)
     else
         closest_hitrec = closest_intersect(scene.objects, ray, tmin, tmax)
     end
 
     if closest_hitrec === nothing
-        return scene.background, Edge_Storage([nothing], 0)
+        return scene.background, Edge_Storage([nothing], [0])
     end
     # define variables
     object = closest_hitrec.object
@@ -84,10 +85,10 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, tran
     mirror_coeff = material.mirror_coeff
 
     local_color, num_shadows = determine_color(shader, object.material, ray, closest_hitrec, scene)
-    edge_detect = Edge_Storage([object], num_shadows)
+    edge_detect = Edge_Storage([object], [num_shadows])
 
     ##############################
-    # TODO 6 - mirror reflection #
+    # mirror reflection #
     ##############################
     # Your implementation:
     if material.mirror_coeff > 0 && rec_depth <= 8
@@ -100,11 +101,13 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, tran
             (r - 2 * dot(r, n) * n),
         )
         # recurse on reflected ray
-        reflect_color, edge_detect_reflect = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
+        reflect_color, ED = traceray(scene, reflect_ray, 1e-8, tmax, rec_depth + 1)
         # Merge. overwrite shadow. Append old object to edge_detect_reflect
-        push!(edge_detect_reflect.obj_id, object)
-        edge_detect_reflect.num_shadows = num_shadows
-        edge_detect = edge_detect_reflect
+        if material.transparency <= 0
+            push!(ED.obj_id, edge_detect.obj_id[1])
+            push!(ED.num_shadows, edge_detect.num_shadows[1])
+            edge_detect = ED
+        end
 
         # scale according to mirror_coeff
         local_color = (1 - mirror_coeff) * local_color + mirror_coeff * reflect_color
@@ -113,10 +116,15 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1, ior=1.5, tran
     ##############################
     # Refraction # (Assumes refractive object is glass, which has an IOR of 1.5)
     ##############################
-    if transparency > 0 && rec_depth <= 8
-        # TODO: find object id recursively
-        refract_color = refract_ray(scene, ray, closest_hitrec, tmin, tmax, rec_depth, ior)
-        local_color = (1 - transparency) * local_color + transparency * refract_color
+    if material.transparency > 0 && rec_depth <= 8
+        refract_color, ED = refract_ray(scene, ray, closest_hitrec, tmin, tmax, rec_depth, material.ior)
+        # Merge. overwrite shadow. Append old object to edge_detect_reflect
+        push!(ED.obj_id, edge_detect.obj_id[1])
+        push!(ED.num_shadows, edge_detect.num_shadows[1])
+        edge_detect = ED
+
+        # scale according to transparency
+        local_color = (1 - material.transparency) * local_color + material.transparency * refract_color
     end
 
     return local_color, edge_detect
@@ -126,7 +134,8 @@ end
 ##############################
 # Refraction Function # (Assumes refractive object is glass, which has an IOR of 1.5)
 ##############################
-function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_depth, ior=1.5)
+function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_depth, ior)
+
     r = normalize(ray.direction)  # Normalize ray direction
     n = normalize(hitrec.normal)  # Normalize surface normal
     cos_theta_i = -dot(r, n)      # Cosine of the angle of incidence
@@ -146,8 +155,8 @@ function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_
     if sin2_theta_t > 1.0
         reflect_dir = normalize(r - 2.0 * dot(r, n) * n)  # Compute reflection direction
         reflect_ray = Ray(hitrec.intersection, reflect_dir)
-        reflect_color, _ = traceray(scene, reflect_ray, tmin, tmax, rec_depth + 1)
-        return reflect_color  # Return reflection color if TIR occurs
+        reflect_color, ED = traceray(scene, reflect_ray, tmin, tmax, rec_depth + 1)
+        return reflect_color, ED  # Return reflection color if TIR occurs
     end
 
     # Compute refracted direction
@@ -158,9 +167,9 @@ function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_
     refract_ray = Ray(hitrec.intersection, refract_dir)
 
     # Recursively trace the refracted ray
-    refract_color, _ = traceray(scene, refract_ray, tmin, tmax, rec_depth + 1, ior)
+    refract_color, ED = traceray(scene, refract_ray, tmin, tmax, rec_depth + 1)
 
-    return refract_color  # Return refraction contribution
+    return refract_color, ED  # Return refraction contribution
 end
 
 ##############################
@@ -249,12 +258,20 @@ end
 
 # Ray-Box Intersection
 function ray_intersects_aabb(ray, bbox::AABB)
-    tmin = (bbox.min .- ray.origin) ./ ray.direction  # Vectorized operation
-    tmax = (bbox.max .- ray.origin) ./ ray.direction  # Vectorized operation
-    tmin, tmax = minimum.(tmin, tmax), maximum.(tmin, tmax)  # Correct ordering
-    tmin_max = maximum(tmin)  # Largest tmin
-    tmax_min = minimum(tmax)  # Smallest tmax
-    return tmin_max <= tmax_min  # Intersection condition
+    # Calculate tmin and tmax for each axis
+    t1 = (bbox.min .- ray.origin) ./ ray.direction
+    t2 = (bbox.max .- ray.origin) ./ ray.direction
+
+    # Ensure t1 is the smaller and t2 is the larger value for each axis
+    tmin = min(t1, t2)  # Smallest t for each axis
+    tmax = max(t1, t2)  # Largest t for each axis
+
+    # Find the largest tmin and the smallest tmax
+    tmin_max = maximum(tmin)  # Largest tmin across all axes
+    tmax_min = minimum(tmax)  # Smallest tmax across all axes
+
+    # Intersection occurs if tmin_max <= tmax_min
+    return tmin_max <= tmax_min && tmax_min >= 0
 end
 
 # Construct BVH
@@ -504,11 +521,9 @@ end
 
 
 function edge_detection!(
-        objs::Matrix{Edge_Storage}, 
-        canvas::Union{Matrix{ColorTypes.RGB{Float32}},Nothing}=nothing,
-        proximity::Float64=0.0,
-        detect_shadows::Bool=false,
-        edit_canvas::Bool=false)
+    objs::Matrix{Edge_Storage},
+    proximity::Float64=0.0,
+    detect_shadows::Bool=false)
 
     height, width = size(objs)
     mask = falses(height, width)
@@ -520,11 +535,19 @@ function edge_detection!(
 
             # Detect shadow edges
             if detect_shadows
-                if (objs[i, j].num_shadows !== objs[i-1, j].num_shadows) ||
-                   (objs[i, j].num_shadows !== objs[i, j-1].num_shadows) ||
-                   (objs[i, j].num_shadows !== objs[i-1, j-1].num_shadows)
-                    
-                    edge = true
+                s1 = objs[i, j].num_shadows
+                s2 = objs[i-1, j].num_shadows
+                s3 = objs[i, j-1].num_shadows
+                s4 = objs[i-1, j-1].num_shadows
+                min = minimum([length(s1), length(s2), length(s3), length(s4)])
+
+                for n in 1:min
+                    if (s1[end-n+1] !== s4[end-n+1]) ||
+                       (s2[end-n+1] !== s4[end-n+1]) ||
+                       (s3[end-n+1] !== s4[end-n+1])
+
+                        edge = true
+                    end
                 end
             end
 
@@ -535,24 +558,19 @@ function edge_detection!(
             id4 = objs[i, j].obj_id
             min = minimum([length(id1), length(id2), length(id3), length(id4)])
 
-            # Detect all other edge types
+            # Detect edges starting at the end of the array
             for n in 1:min
-                if (id1[n] !== id4[n]) ||
-                   (id2[n] !== id4[n]) ||
-                   (id3[n] !== id4[n])
-                    
+                if (id1[end-n+1] !== id4[end-n+1]) ||
+                   (id2[end-n+1] !== id4[end-n+1]) ||
+                   (id3[end-n+1] !== id4[end-n+1])
+
                     edge = true
                 end
             end
 
-            if edit_canvas
-                if edge
-                    center = (i, j)
-                    draw_circle!(mask, center, proximity, true)
-                    if canvas !== nothing
-                        draw_circle!(canvas, center, proximity, RGB{Float32}(0, 1, 0))
-                    end
-                end
+            if edge
+                center = (i, j)
+                draw_circle!(mask, center, proximity, true)
             end
         end
     end
@@ -572,14 +590,14 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
                 color = color + sub_px_color
             end
         end
-    # Random AA
+        # Random AA
     elseif (aa_mode == "random")
         for p in 1:aa_samples^2
             view_ray = Cameras.pixel_to_ray(camera, i - rand(Float32), j - rand(Float32))
             sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
             color = color + sub_px_color
         end
-    # Stratified AA
+        # Stratified AA
     elseif (aa_mode == "stratified")
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
@@ -592,9 +610,10 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     return color / aa_samples^2
 end
 
-# Rays.main(7, 1, 300, 300, "results/Anti_Aliasing_Results")
-function main(height, width, out_dir, AA_type="none", sample_type="uniform", 
-                AA_samples=1, thickness=0.0, detect_shadows=true)
+
+# Rays.main(300, 300, "results")
+function main(height, width, out_dir, AA_type="none", sample_type="uniform",
+    AA_samples=1, thickness=0.0, detect_shadows=true; bvh_toggle=false)
     """
 Parameters
     AA_type: Type of Anti-Aliasing to perform.
@@ -611,19 +630,18 @@ Parameters
     detect_shadows: boolean which controls if edges for shadows are included. It is 
                     recommended to turn off when using directional lighting.
     """
-    scene, camera = 7, 1
+    @time begin
+    scene_name, camera = "wizard_cat", 2
+    global use_bvh
+    use_bvh = bvh_toggle
 
-    # get the requested scene and camera
-    scene = TestScenes.get_scene(scene)
-    camera = TestScenes.get_camera(camera, height, width)
+        # get the requested scene and camera
+        scene = TestScenes.get_scene(scene_name)
+        camera = TestScenes.get_camera(camera, height, width)
 
-    # Construct a BVH for the objects in the scene
-    bvh = construct_bvh(scene.objects)
-
-    # Create a blank canvas to store the image:
-    canvas = zeros(RGB{Float32}, height, width)
-    objs = Array{Edge_Storage}(undef, height, width)
-
+        # Create a blank canvas to store the image:
+        canvas = zeros(RGB{Float32}, height, width)
+        objs = Array{Edge_Storage}(undef, height, width)
 
     if AA_type == "full"
         # Anti-Alias across the entire image. 
@@ -645,19 +663,22 @@ Parameters
             end
         end
         # generate boolean mask
-        mask = edge_detection!(objs, canvas, thickness, detect_shadows, true)
-    
+        mask = edge_detection!(objs, thickness, detect_shadows)
+        
         # Anti-Alias according to mask
         for i in 1:height
+            println("Row $i complete.")
             for j in 1:width
                 if (mask[i, j] == true)
                     canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
+                    # canvas[i, j] = RGB{Float32}(0,1,0) # draw green lines
                 end
             end
         end
     elseif AA_type == "none"
         # standard ray tracing
         for i in 1:height
+            println("Row $i complete.")
             for j in 1:width
                 tmin = 1
                 tmax = Inf
@@ -669,17 +690,22 @@ Parameters
     end
     # Determine filename to save as
     if AA_type == "none"
-        outfile = "$out_dir/no_anti_aliasing-$sample_type.png"
-    elseif AA_type == "full"
-        outfile = "$out_dir/full_AA-$sample_type-N=$AA_samples.png"
-    elseif AA_type == "edge_detect"
-        outfile = "$out_dir/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
+        outfile = "$out_dir/$scene_name/no_anti_aliasing.png"
+    elseif startswith(AA_type, "full_")
+        outfile = "$out_dir/$scene_name/full_AA-$sample_type-N=$AA_samples.png"
     else
-        error("Invalid AA type input")
+        outfile = "$out_dir/$scene_name/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
     end
+    println(outfile)
     # clamp canvas to valid range:
     clamp01!(canvas)
+    # create directory and save image
+    dir_name = dirname(outfile)
+    if !isdir(dir_name)
+        mkpath(dir_name)
+    end
     save(outfile, canvas)
+end
 end
 
 

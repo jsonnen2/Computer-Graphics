@@ -82,6 +82,7 @@ function ray_intersect(ray::Ray, object::Sphere)
 
     # Calculate texture coordinates
     x, y, z = (intersection .- object.center) ./ object.radius
+    y = clamp(y, -1, 1)
     u = (1 / pi) * acos(y)
     v = atan(z, x)
     uv = Vec2(u, v)
