@@ -611,9 +611,9 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
 end
 
 
-# Rays.main(300, 300, "results")
-function main(height, width, out_dir, AA_type="none", sample_type="uniform",
-    AA_samples=1, thickness=0.0, detect_shadows=true; bvh_toggle=false)
+# Rays.main("wizard_hat", 4)
+function main(scene_name, camera_name, AA_type="none", sample_type="uniform",
+    AA_samples=1, thickness=1.0, detect_shadows=true; bvh_toggle=false)
     """
 Parameters
     AA_type: Type of Anti-Aliasing to perform.
@@ -630,18 +630,19 @@ Parameters
     detect_shadows: boolean which controls if edges for shadows are included. It is 
                     recommended to turn off when using directional lighting.
     """
-    @time begin
-    scene_name, camera = "wizard_cat", 2
+  @time begin
+    height, width = 300, 300
+    out_dir = "results"
     global use_bvh
     use_bvh = bvh_toggle
 
-        # get the requested scene and camera
-        scene = TestScenes.get_scene(scene_name)
-        camera = TestScenes.get_camera(camera, height, width)
+    # get the requested scene and camera
+    scene = TestScenes.get_scene(scene_name)
+    camera = TestScenes.get_camera(camera_name, height, width)
 
-        # Create a blank canvas to store the image:
-        canvas = zeros(RGB{Float32}, height, width)
-        objs = Array{Edge_Storage}(undef, height, width)
+    # Create a blank canvas to store the image:
+    canvas = zeros(RGB{Float32}, height, width)
+    objs = Array{Edge_Storage}(undef, height, width)
 
     if AA_type == "full"
         # Anti-Alias across the entire image. 
@@ -685,9 +686,7 @@ Parameters
                 view_ray = Cameras.pixel_to_ray(camera, i, j)
                 color, edge_stor = traceray(scene, view_ray, tmin, tmax)
                 canvas[i, j] = color
-            end
-        end
-    end
+    end end end
     # Determine filename to save as
     if AA_type == "none"
         outfile = "$out_dir/$scene_name/no_anti_aliasing.png"
@@ -705,8 +704,4 @@ Parameters
         mkpath(dir_name)
     end
     save(outfile, canvas)
-end
-end
-
-
-end
+end end end
