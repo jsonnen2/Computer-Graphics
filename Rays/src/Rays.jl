@@ -585,7 +585,7 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     if (aa_mode == "uniform")
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
-                view_ray = Cameras.pixel_to_ray(camera, i + (p - 0.5) / aa_samples - 0.5, j + (q - 0.5) / aa_samples - 0.5)
+                view_ray = Cameras.pixel_to_ray(camera, i + (p + 0.5) / aa_samples - 0.5, j + (q + 0.5) / aa_samples - 0.5)
                 sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
                 color = color + sub_px_color
             end
@@ -593,7 +593,7 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
         # Random AA
     elseif (aa_mode == "random")
         for p in 1:aa_samples^2
-            view_ray = Cameras.pixel_to_ray(camera, i - rand(Float32), j - rand(Float32))
+            view_ray = Cameras.pixel_to_ray(camera, i + 0.5 - rand(Float32), j + 0.5 - rand(Float32))
             sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
             color = color + sub_px_color
         end
@@ -601,7 +601,7 @@ function aa_get_px_color(i, j, scene, camera, aa_mode, aa_samples)
     elseif (aa_mode == "stratified")
         for p in 0:aa_samples-1
             for q in 0:aa_samples-1
-                view_ray = Cameras.pixel_to_ray(camera, i + (p - (rand(Float32) - 0.5) / 2) / aa_samples - 0.5, j + (q - (rand(Float32) - 0.5) / 2) / aa_samples - 0.5)
+                view_ray = Cameras.pixel_to_ray(camera, i + (p - (rand(Float32) + 0.5) / 2) / aa_samples - 0.5, j + (q - (rand(Float32) + 0.5) / 2) / aa_samples - 0.5)
                 sub_px_color, obj = traceray(scene, view_ray, tmin, tmax)
                 color = color + sub_px_color
             end
