@@ -42,7 +42,7 @@ function camera_3(img_height, img_width)
 end
 
 function wizard_hat_camera(img_height, img_width)
-    eye = Vec3(0.125,6.75,20)
+    eye = Vec3(0.125, 6.75, 20)
     view = Vec3(0, -1, -4)
     up = Vec3(0, 1, 0)
     focal = 8.0
@@ -76,7 +76,7 @@ function refract1()
     Scene(bg, objs, lights)
 end
 
-function refract2()
+function scene_9()
     bg = black
     objs = []
 
@@ -158,7 +158,7 @@ function wizard_hat()
     objs = []
 
     # add a wizard tower:
-    tower_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(128/255, 0, 128/255))
+    tower_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(128 / 255, 0, 128 / 255))
     tower = read_obj("data/wizard_hat.obj")
     append!(objs, mesh_helper(tower, tower_mat, 1.0, Vec3(0.2, 0, -5)))
 
@@ -167,7 +167,7 @@ function wizard_hat()
         PointLight(0.7, Vec3(10, 5, -8)),  # Light 2
         PointLight(0.6, Vec3(5, 10, -12)), # Light 3
         PointLight(0.4, Vec3(-5, 3, -15)), # Light 4
-        AreaLight(0.5, Vec3(-2, 10, 5), Vec3(0,0,0), Vec3(1,1,1))
+        AreaLight(0.5, Vec3(-2, 10, 5), Vec3(0, 0, 0), Vec3(1, 1, 1))
     ]
 
     Scene(bg, objs, lights)
@@ -188,7 +188,7 @@ function scene_10()
 end
 
 # Test refraction (Scene 3 duplicate with some modifications)
-function scene_11()
+function refract2()
     bg = black
 
     # Materials
@@ -224,12 +224,13 @@ function wizard_cat()
     append!(objs, mesh_helper(wizardcat, wizardcat_mat, 1.0, Vec3(0.2, -2, -6)))
 
     # add wizardcat's orb (glass sphere)
-    orb_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.2, 0.6, 1.0), 0.9, 1.5)
+    orb_mat = Material(BlinnPhong(RGB(0.835, 0.212, 0.0), 64), 0.0, nothing, RGB{Float32}(0.1, 0.3, 0.5), 0.6, 1.5)
+    #orb_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.1, 0.3, 0.5), 0.6, 1.5)
     orb_obj = mesh_helper(sphere_mesh(32, 16), orb_mat, 1.0, Vec3(0.1, -1, -3))
     append!(objs, orb_obj)
 
     lights = [
-        PointLight(0.5, Vec3(0.1,-1,-3)),
+        PointLight(0.5, Vec3(0.1, -1, -3)),
         AreaLight(1.5, Vec3(1, 3, -2), Vec3(1, -3, 0), Vec3(0, 0, 1))
     ]
     # camera = Cameras.PerspectiveCamera(
@@ -239,7 +240,7 @@ function wizard_cat()
     #     focal = 8.0,
     #     300, 
     #     300)
-    
+
     Scene(bg, objs, lights)
 
 end

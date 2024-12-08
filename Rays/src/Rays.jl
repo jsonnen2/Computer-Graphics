@@ -68,8 +68,14 @@ end
 limited to rec_depth recursive calls. """
 function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
 
+    # BVH Override
+    #use_bvh = true
+
     if use_bvh == true
-        bvh = construct_bvh(scene.objects)
+        global bvh
+        if bvh === nothing
+            bvh = construct_bvh(scene.objects)
+        end
         closest_hitrec = traverse_bvh(bvh, ray)
     else
         closest_hitrec = closest_intersect(scene.objects, ray, tmin, tmax)
@@ -114,7 +120,7 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
     end
 
     ##############################
-    # Refraction # (Assumes refractive object is glass, which has an IOR of 1.5)
+    # Refraction #
     ##############################
     if material.transparency > 0 && rec_depth <= 8
         refract_color, ED = refract_ray(scene, ray, closest_hitrec, tmin, tmax, rec_depth, material.ior)
@@ -132,7 +138,7 @@ function traceray(scene::Scene, ray::Ray, tmin, tmax, rec_depth=1)
 end
 
 ##############################
-# Refraction Function # (Assumes refractive object is glass, which has an IOR of 1.5)
+# Refraction Function #
 ##############################
 function refract_ray(scene::Scene, ray::Ray, hitrec::HitRecord, tmin, tmax, rec_depth, ior)
 
@@ -175,15 +181,23 @@ end
 ##############################
 # BVH Node Definitions #
 ##############################
+
+# Abstract type for all BVH nodes (either leaf or internal nodes)
 abstract type BVHNode end
+
+# Axis-Aligned Bounding Box (AABB) representation
 mutable struct AABB
     min::NTuple{3,Float64}
     max::NTuple{3,Float64}
 end
+
+# Leaf node in the BVH, storing a bounding box and a list of objects
 mutable struct BVHLeaf <: BVHNode
     bbox::AABB
     objects::Vector{Any}
 end
+
+# Internal node in the BVH, storing a bounding box and references to child nodes
 mutable struct BVHInternal <: BVHNode
     bbox::AABB
     left::BVHNode
@@ -194,21 +208,21 @@ end
 # BVH functions #
 ##############################
 
-# Compute Bounding Box for a Sphere 
-# Compute Bounding Box for a Sphere
+# Compute the bounding box for a sphere
 function compute_bbox(obj::Scenes.Sphere)
-    # Ensure obj.center is a 3D vector and obj.radius is a scalar
-    mins = Tuple(obj.center .- obj.radius)  # Convert to NTuple{3, Float64}
-    maxs = Tuple(obj.center .+ obj.radius)  # Convert to NTuple{3, Float64}
+    # The bounding box is centered at the sphere's center with dimensions based on the radius
+    mins = Tuple(obj.center .- obj.radius)
+    maxs = Tuple(obj.center .+ obj.radius)
     return AABB(mins, maxs)
 end
 
-# Compute Bounding Box for an Internal BVH Node
+# Compute the bounding box for an internal BVH node by merging child bounding boxes
 function compute_bbox(node::BVHInternal)
+    # Compute bounding boxes for left and right children
     left_bbox = compute_bbox(node.left)
     right_bbox = compute_bbox(node.right)
 
-    # Calculate the element-wise minimum and maximum
+    # Compute the minimum and maximum corners of the merged bounding box
     mins = (min(left_bbox.min[1], right_bbox.min[1]),
         min(left_bbox.min[2], right_bbox.min[2]),
         min(left_bbox.min[3], right_bbox.min[3]))
@@ -220,15 +234,16 @@ function compute_bbox(node::BVHInternal)
     return AABB(mins, maxs)
 end
 
-# Compute Bounding Box for a Triangle
+# Compute the bounding box for a triangle
 function compute_bbox(obj::Scenes.Triangle)
-    vertices = [Scenes.get_vertex(obj, i) for i in 1:3]
+    # A triangle's bounding box is defined by the min/max corners of its vertices
+    vertices = [Scenes.get_vertex(obj, i) for i in 1:3]  # Extract vertices of the triangle
 
-    # Initialize mins and maxs with the coordinates of the first vertex
+    # Initialize mins and maxs with the first vertex
     mins = vertices[1]
     maxs = vertices[1]
 
-    # Iterate through the vertices to update mins and maxs element-wise
+    # Iterate through vertices to update min and max corners
     for vertex in vertices
         mins = (min(mins[1], vertex[1]), min(mins[2], vertex[2]), min(mins[3], vertex[3]))
         maxs = (max(maxs[1], vertex[1]), max(maxs[2], vertex[2]), max(maxs[3], vertex[3]))
@@ -237,99 +252,116 @@ function compute_bbox(obj::Scenes.Triangle)
     return AABB(mins, maxs)
 end
 
-# Compute the bounding box for the BVH Node (Leaf or Internal)
+# Compute the bounding box for a BVH node (leaf or internal)
 function compute_bbox(node::BVHNode)
     if isa(node, BVHLeaf)
-        # If it's a leaf, compute the bounding box for the objects inside
-        bbox = node.bbox
+        # If it's a leaf, compute the bounding box for its objects
+        bbox = reduce((b1, b2) -> merge_bbox(b1, b2), [compute_bbox(obj) for obj in node.objects])
+        return bbox
     elseif isa(node, BVHInternal)
-        # If it's an internal node, recursively compute the bounding boxes of the children
+        # If it's an internal node, merge the bounding boxes of its children
         left_bbox = compute_bbox(node.left)
         right_bbox = compute_bbox(node.right)
 
-        # Merge the bounding boxes of the children
-        mins = minimum(left_bbox.min, right_bbox.min)  # Apply element-wise minimum
-        maxs = maximum(left_bbox.max, right_bbox.max)  # Apply element-wise maximum
+        mins = (min(left_bbox.min[1], right_bbox.min[1]),
+            min(left_bbox.min[2], right_bbox.min[2]),
+            min(left_bbox.min[3], right_bbox.min[3]))
 
-        bbox = AABB(mins, maxs)  # New bounding box
+        maxs = (max(left_bbox.max[1], right_bbox.max[1]),
+            max(left_bbox.max[2], right_bbox.max[2]),
+            max(left_bbox.max[3], right_bbox.max[3]))
+
+        return AABB(mins, maxs)
     end
-    return bbox
 end
 
-# Ray-Box Intersection
-function ray_intersects_aabb(ray, bbox::AABB)
-    # Calculate tmin and tmax for each axis
-    t1 = (bbox.min .- ray.origin) ./ ray.direction
-    t2 = (bbox.max .- ray.origin) ./ ray.direction
+# Merge two bounding boxes into a single bounding box
+function merge_bbox(bbox1::AABB, bbox2::AABB)::AABB
+    # Compute element-wise minimum and maximum for the new bounding box
+    mins = (min(bbox1.min[1], bbox2.min[1]),
+        min(bbox1.min[2], bbox2.min[2]),
+        min(bbox1.min[3], bbox2.min[3]))
 
-    # Ensure t1 is the smaller and t2 is the larger value for each axis
-    tmin = min(t1, t2)  # Smallest t for each axis
-    tmax = max(t1, t2)  # Largest t for each axis
-
-    # Find the largest tmin and the smallest tmax
-    tmin_max = maximum(tmin)  # Largest tmin across all axes
-    tmax_min = minimum(tmax)  # Smallest tmax across all axes
-
-    # Intersection occurs if tmin_max <= tmax_min
-    return tmin_max <= tmax_min && tmax_min >= 0
+    maxs = (max(bbox1.max[1], bbox2.max[1]),
+        max(bbox1.max[2], bbox2.max[2]),
+        max(bbox1.max[3], bbox2.max[3]))
+    return AABB(mins, maxs)
 end
 
-# Construct BVH
+# Check if a ray intersects a bounding box (AABB)
+function ray_intersect_bbox(ray::Ray, bbox::AABB)::Bool
+    invdir = 1.0 ./ ray.direction  # Compute inverse direction for efficiency
+    tmin_vals = (bbox.min .- ray.origin) .* invdir
+    tmax_vals = (bbox.max .- ray.origin) .* invdir
+
+    # Correctly handle tmin and tmax for each axis
+    tmin = map(min, tmin_vals, tmax_vals)
+    tmax = map(max, tmin_vals, tmax_vals)
+
+    # Determine the entering and exiting times for the ray
+    t_enter = maximum(tmin)  # Latest time of entry
+    t_exit = minimum(tmax)   # Earliest time of exit
+
+    # Ray intersects the box if t_enter <= t_exit and t_exit >= 0
+    return t_enter <= t_exit && t_exit >= 0.0
+end
+
+# Construct a BVH from a list of objects
 function construct_bvh(objects::Vector{Any}, depth::Int=0)::BVHNode
     if length(objects) <= 2 || depth > 16
-        # Base case: create a leaf node
-        bbox = compute_bbox(objects[1])  # Compute bounding box for objects
+        # Base case: create a leaf node with bounding box for all objects
+        bbox = reduce((b1, b2) -> merge_bbox(b1, b2), [compute_bbox(obj) for obj in objects])
         return BVHLeaf(bbox, objects)
+    else
+        # Partition objects along the largest axis of the bounding box
+        bbox = reduce((b1, b2) -> merge_bbox(b1, b2), [compute_bbox(obj) for obj in objects])
+        axis = argmax(bbox.max .- bbox.min)  # Choose the largest axis
+
+        # Sort objects along the axis and split into two groups
+        sorted_objects = sort(objects, by=obj -> compute_bbox(obj).min[axis])
+        mid = Int(floor(length(objects) / 2))
+        left = construct_bvh(sorted_objects[1:mid], depth + 1)
+        right = construct_bvh(sorted_objects[mid+1:end], depth + 1)
+
+        # Create an internal node with children and a merged bounding box
+        return BVHInternal(merge_bbox(left.bbox, right.bbox), left, right)
     end
-
-    # Sort objects by their centroids along the selected axis
-    axis = depth % 3 + 1  # Cycle through x, y, z axes
-    sorted_objs = sort!(objects, by=obj -> centroid(compute_bbox(obj))[axis])
-    mid = length(sorted_objs) ÷ 2
-
-    # Recursively construct BVH for left and right partitions
-    left = construct_bvh(sorted_objs[1:mid], depth + 1)
-    right = construct_bvh(sorted_objs[mid+1:end], depth + 1)
-
-    # Compute bounding box for the internal node
-    left_bbox = compute_bbox(left)
-    right_bbox = compute_bbox(right)
-    mins = Tuple(map(t -> min(t...), zip(left_bbox.min, right_bbox.min)))
-    maxs = Tuple(map(t -> max(t...), zip(left_bbox.max, right_bbox.max)))
-    bbox = AABB(mins, maxs)
-
-    return BVHInternal(bbox, left, right)
 end
 
-# Calculate Centroid of a Bounding Box
-function centroid(bbox::AABB)
-    return 0.5 .* (bbox.min .+ bbox.max)  # Element-wise midpoint calculation
-end
-
-# Traverse BVH
+# Traverse the BVH to find the closest intersection of a ray
 function traverse_bvh(node::BVHNode, ray::Ray)
     if isa(node, BVHLeaf)
         # Check intersections for all objects in the leaf
-        intersections = filter(!isnothing, [Scenes.ray_intersect(ray, obj) for obj in node.objects])
-        return isempty(intersections) ? nothing : minimum(intersections, by=x -> x.t)
-    end
+        closest_hit = nothing
+        closest_t = Inf
+        for obj in node.objects
+            hitrec = Scenes.ray_intersect(ray, obj)
+            if hitrec !== nothing && hitrec.t < closest_t
+                closest_hit = hitrec
+                closest_t = hitrec.t
+            end
+        end
+        return closest_hit
+    elseif isa(node, BVHInternal)
+        # Check if the ray intersects the bounding box of the internal node
+        if !ray_intersect_bbox(ray, node.bbox)
+            return nothing
+        end
 
-    # If it's an internal node, check intersection with the bounding box
-    if ray_intersects_aabb(ray, node.bbox)
+        # Recursively traverse left and right children
         left_hit = traverse_bvh(node.left, ray)
         right_hit = traverse_bvh(node.right, ray)
 
-        # Return the closer intersection
-        if isnothing(left_hit)
+        # Return the closest hit (if any)
+        if left_hit === nothing
             return right_hit
-        elseif isnothing(right_hit)
+        elseif right_hit === nothing
             return left_hit
         else
             return left_hit.t < right_hit.t ? left_hit : right_hit
         end
     end
-
-    return nothing  # No intersection
+    return nothing
 end
 
 ##############################
@@ -661,78 +693,83 @@ Parameters
     detect_shadows: boolean which controls if edges for shadows are included. It is 
                     recommended to turn off when using directional lighting.
     """
-  @time begin
-    height, width = 300, 300
-    out_dir = "results"
-    global use_bvh
-    use_bvh = bvh_toggle
+    @time begin
+        height, width = 300, 300
+        out_dir = "results"
+        global use_bvh, bvh
+        use_bvh = bvh_toggle
+        bvh = nothing
 
-    # get the requested scene and camera
-    scene = TestScenes.get_scene(scene_name)
-    camera = TestScenes.get_camera(camera_name, height, width)
+        # get the requested scene and camera
+        scene = TestScenes.get_scene(scene_name)
+        camera = TestScenes.get_camera(camera_name, height, width)
 
-    # Create a blank canvas to store the image:
-    canvas = zeros(RGB{Float32}, height, width)
-    objs = Array{Edge_Storage}(undef, height, width)
+        # Create a blank canvas to store the image:
+        canvas = zeros(RGB{Float32}, height, width)
+        objs = Array{Edge_Storage}(undef, height, width)
 
-    if AA_type == "full"
-        # Anti-Alias across the entire image. 
-        for i in 1:height
-            for j in 1:width
-                canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
-            end
-        end
-    elseif AA_type == "edge_detect"
-        # generate the data to be able to edge detect 
-        for i in 1:height
-            for j in 1:width
-                tmin = 1
-                tmax = Inf
-                view_ray = Cameras.pixel_to_ray(camera, i, j)
-                color, edge_stor = traceray(scene, view_ray, tmin, tmax)
-                canvas[i, j] = color
-                objs[i, j] = edge_stor
-            end
-        end
-        # generate boolean mask
-        mask = edge_detection!(objs, thickness, detect_shadows)
-        
-        # Anti-Alias according to mask
-        for i in 1:height
-            println("Row $i complete.")
-            for j in 1:width
-                if (mask[i, j] == true)
+        if AA_type == "full"
+            # Anti-Alias across the entire image. 
+            for i in 1:height
+                for j in 1:width
                     canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
-                    # canvas[i, j] = RGB{Float32}(0,1,0) # draw green lines
+                end
+            end
+        elseif AA_type == "edge_detect"
+            # generate the data to be able to edge detect 
+            for i in 1:height
+                for j in 1:width
+                    tmin = 1
+                    tmax = Inf
+                    view_ray = Cameras.pixel_to_ray(camera, i, j)
+                    color, edge_stor = traceray(scene, view_ray, tmin, tmax)
+                    canvas[i, j] = color
+                    objs[i, j] = edge_stor
+                end
+            end
+            # generate boolean mask
+            mask = edge_detection!(objs, thickness, detect_shadows)
+
+            # Anti-Alias according to mask
+            for i in 1:height
+                println("Row $i complete.")
+                for j in 1:width
+                    if (mask[i, j] == true)
+                        canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
+                        # canvas[i, j] = RGB{Float32}(0,1,0) # draw green lines
+                    end
+                end
+            end
+        elseif AA_type == "none"
+            # standard ray tracing
+            for i in 1:height
+                println("Row $i complete.")
+                for j in 1:width
+                    tmin = 1
+                    tmax = Inf
+                    view_ray = Cameras.pixel_to_ray(camera, i, j)
+                    color, edge_stor = traceray(scene, view_ray, tmin, tmax)
+                    canvas[i, j] = color
                 end
             end
         end
-    elseif AA_type == "none"
-        # standard ray tracing
-        for i in 1:height
-            println("Row $i complete.")
-            for j in 1:width
-                tmin = 1
-                tmax = Inf
-                view_ray = Cameras.pixel_to_ray(camera, i, j)
-                color, edge_stor = traceray(scene, view_ray, tmin, tmax)
-                canvas[i, j] = color
-    end end end
-    # Determine filename to save as
-    if AA_type == "none"
-        outfile = "$out_dir/$scene_name/no_anti_aliasing.png"
-    elseif startswith(AA_type, "full_")
-        outfile = "$out_dir/$scene_name/full_AA-$sample_type-N=$AA_samples.png"
-    else
-        outfile = "$out_dir/$scene_name/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
+        # Determine filename to save as
+        if AA_type == "none"
+            outfile = "$out_dir/$scene_name/no_anti_aliasing.png"
+        elseif startswith(AA_type, "full_")
+            outfile = "$out_dir/$scene_name/full_AA-$sample_type-N=$AA_samples.png"
+        else
+            outfile = "$out_dir/$scene_name/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
+        end
+        println(outfile)
+        # clamp canvas to valid range:
+        clamp01!(canvas)
+        # create directory and save image
+        dir_name = dirname(outfile)
+        if !isdir(dir_name)
+            mkpath(dir_name)
+        end
+        save(outfile, canvas)
     end
-    println(outfile)
-    # clamp canvas to valid range:
-    clamp01!(canvas)
-    # create directory and save image
-    dir_name = dirname(outfile)
-    if !isdir(dir_name)
-        mkpath(dir_name)
-    end
-    save(outfile, canvas)
-end end end
+end
+end
