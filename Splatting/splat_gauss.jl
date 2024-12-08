@@ -217,7 +217,7 @@ function train(infile::String, outfile::String, LR_scale, LR_lum, init_type, epo
 end
 
 function control_panel()
-
+# beginning of program execution
     infile = "imgs/source/landscape.jpg"
     out_dir = "imgs/gsplat_timing"
     LR_scale = 1e-3
