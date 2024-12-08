@@ -118,7 +118,9 @@ function calc_gradients(loss, gsplat_bag)
     # calculate gradients for luminance, scale_x, scale_y
     # for batched learning, pass in a subset of gsplat_bag. Use that same subset in update_splats!()
 
+    smoothing_radius = 1e-3
     height, width = size(loss)
+
     grad_luminance = fill(0.0f0, size(gsplat_bag))
     grad_scale_x = fill(0.0f0, size(gsplat_bag))
     grad_scale_y = fill(0.0f0, size(gsplat_bag))
@@ -126,9 +128,7 @@ function calc_gradients(loss, gsplat_bag)
     for (idx, blob) in enumerate(gsplat_bag)
 
         cx, cy = blob.center
-        p = 1e-3
-
-        offset = Int(round(max(blob.scale_x, blob.scale_y, 0.0) * -log(p)))
+        offset = Int(round(max(blob.scale_x, blob.scale_y, 0.0) * -log(smoothing_radius)))
 
         for h in max(1, cy-offset) : min(height, cy+offset)
             for w in max(1, cx-offset) : min(width, cx+offset)
@@ -194,7 +194,6 @@ function train(infile::String, outfile::String, LR_scale, LR_lum, init_type, epo
         # end
 
         # periodicly save progress
-        if epoch % 1000 == 0
             
             # create and save image
             img = clamp01.(forward_pass(gsplat_bag, height, width))
@@ -206,28 +205,28 @@ function train(infile::String, outfile::String, LR_scale, LR_lum, init_type, epo
             save(save_dir, img)
             println(save_dir)
 
-            # print Loss
-            loss = sum(sum(loss, dims=1), dims=2)
-            println("Loss ==> $loss")
+            # # print Loss
+            # loss = sum(sum(loss, dims=1), dims=2)
+            # println("Loss ==> $loss")
 
-            # print Time
-            time_elapsed = time() - start_time
-            start_time = time()
-            println("Time ==> $time_elapsed")
-        end
+            # # print Time
+            # time_elapsed = time() - start_time
+            # start_time = time()
+            # println("Time ==> $time_elapsed")
     end
 end
 
 function control_panel()
 
     infile = "imgs/source/landscape.jpg"
-    out_dir = "imgs/gsplat_random_learn_scale_luminance"
+    out_dir = "imgs/gsplat_timing"
     LR_scale = 1e-3
     LR_lum = 1e-4
-    batch_sizes = [0.1]
+    batch_sizes = [1.0]
     init_techniques = ["random"]
-    epochs = [1e6]
-    num_blobs = [5000]
+    epochs = [1]
+    num_blobs = [2^i for i in 3:20]
+    timekeeper = [time()]
 
     for blob in num_blobs
         for epoch in epochs
@@ -236,12 +235,21 @@ function control_panel()
 
                     outfile = "$out_dir/init=$init_type-blobs=$blob-batch=$batch_size-LR_scale=$LR_scale-LR_lum=$LR_lum"
                     train(infile, outfile, LR_scale, LR_lum, init_type, epoch, blob, batch_size)
-
+                    push!(timekeeper, time())
                 end
             end
         end
     end
+    timekeeper .-= timekeeper[1]
+
+    # save to clock.txt
+    open("$out_dir/clock.txt", "w") do file
+        for elem in timekeeper[2:end]
+            write(file, string(elem), "\n")
+        end
+    end
 end
+control_panel()
 
 
 end
