@@ -732,7 +732,7 @@ Parameters
 
             # Anti-Alias according to mask
             for i in 1:height
-                println("Row $i complete.")
+                #println("Row $i complete.")
                 for j in 1:width
                     if (mask[i, j] == true)
                         canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
@@ -743,7 +743,7 @@ Parameters
         elseif AA_type == "none"
             # standard ray tracing
             for i in 1:height
-                println("Row $i complete.")
+                #println("Row $i complete.")
                 for j in 1:width
                     tmin = 1
                     tmax = Inf
@@ -756,7 +756,7 @@ Parameters
         # Determine filename to save as
         if AA_type == "none"
             outfile = "$out_dir/$scene_name/no_anti_aliasing.png"
-        elseif AA_type == "edge_detect"
+        elseif AA_type == "full"
             outfile = "$out_dir/$scene_name/full_AA-$sample_type-N=$AA_samples.png"
         else
             outfile = "$out_dir/$scene_name/edge_detect_AA-$sample_type-N=$AA_samples-THICK=$thickness-shadows=$detect_shadows.png"
