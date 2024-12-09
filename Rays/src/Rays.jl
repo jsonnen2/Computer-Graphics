@@ -732,7 +732,7 @@ Parameters
 
             # Anti-Alias according to mask
             for i in 1:height
-                #println("Row $i complete.")
+                println("Row $i complete.")
                 for j in 1:width
                     if (mask[i, j] == true)
                         canvas[i, j] = aa_get_px_color(i, j, scene, camera, sample_type, AA_samples)
@@ -743,7 +743,7 @@ Parameters
         elseif AA_type == "none"
             # standard ray tracing
             for i in 1:height
-                #println("Row $i complete.")
+                # println("Row $i complete.")
                 for j in 1:width
                     tmin = 1
                     tmax = Inf

@@ -215,6 +215,10 @@ function refract2()
 end
 
 function wizard_cat()
+
+end
+
+function shadow_wizard_money_gang()
     bg = black
     objs = []
 
@@ -260,11 +264,11 @@ function get_camera(i, img_height, img_width)
 end
 
 
-scenes = [refract1, bunny, refract2, wizard_tower, wizard_hat, wizard_cat]
+scenes = [refract1, bunny, refract2, wizard_tower, wizard_hat, wizard_cat, shadow_wizard_money_gang]
 
 function get_scene(scene::String)
     scene_names = [
-        "refract1", "bunny", "refract2", "wizard_tower", "wizard_hat", "wizard_cat"
+        "refract1", "bunny", "refract2", "wizard_tower", "wizard_hat", "wizard_cat", "shadow_wizard_money_gang"
     ]
     i = findfirst(x -> x == scene, scene_names)
     return scenes[i]()
