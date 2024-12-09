@@ -19,7 +19,7 @@ purple = RGB{Float32}(1, 0, 1)
 
 # Rays.main(1, 1, 200, 300, "results/out_1.png")
 
-function camera_1(img_height, img_width)
+function canonical(img_height, img_width)
     CanonicalCamera(img_height, img_width)
 end
 
@@ -32,7 +32,6 @@ function camera_2(img_height, img_width)
 end
 
 function camera_3(img_height, img_width)
-
     Cameras.PerspectiveCamera(
         Vec3(-1, 0.8, -1.2),  # eye::Vec3
         Vec3(1, -1, -1), # view::Vec3
@@ -42,15 +41,15 @@ function camera_3(img_height, img_width)
         img_width) # canv_width::Int)
 end
 
-function camera_4(img_height, img_width)
-    eye = Vec3(0.125,6.75,20)
+function wizard_hat_camera(img_height, img_width)
+    eye = Vec3(0.125, 6.75, 20)
     view = Vec3(0, -1, -4)
     up = Vec3(0, 1, 0)
     focal = 8.0
     Cameras.PerspectiveCamera(eye, view, up, focal, img_height, img_width)
 end
 
-function camera_5(img_height, img_width)
+function wizard_tower_camera(img_height, img_width)
     eye = Vec3(2, 8, 0)
     view = Vec3(0, 0, -1)
     up = Vec3(0, 1, 0)
@@ -59,59 +58,7 @@ function camera_5(img_height, img_width)
 end
 
 
-function scene_1()
-    bg = RGB{Float32}(0.95, 0.95, 0.95)
-    objs = [Sphere(Vec3(0, 0, -5), 1, Material(Flat(), 0.0, nothing, RGB{Float32}(0.73, 0, 0.17)))]
-    lights = [PointLight(0.8, Vec3(0, 0, 0))]
-    Scene(bg, objs, lights)
-end
-
-function scene_2()
-    bg = black
-    objs = [
-        Sphere(Vec3(2, 0, -8), 1, Material(Lambertian(), 0.0, nothing, white)),
-        Sphere(Vec3(-2, 0, -8), 2, Material(Lambertian(), 0.0, nothing, blue))
-    ]
-
-    lights = [DirectionalLight(1.0, Vec3(1, 0.5, -0.1))]
-    Scene(bg, objs, lights)
-end
-
-function scene_3()
-    bg = black
-    mat = Material(Lambertian(), 0.0, nothing, white)
-    objs = [
-        Sphere(Vec3(-2, 1, -8), 1, mat),
-        Sphere(Vec3(2, 1, -8), 1, mat)
-    ]
-
-    lights = [PointLight(1.0, Vec3(0, 5, -8.5))]
-
-    Scene(bg, objs, lights)
-end
-
-function scene_4()
-    bg = black
-    torq = RGB{Float32}(175, 238, 238)
-    mat1 = Material(BlinnPhong(white, 10), 0.0, nothing, white)
-    mat2 = Material(BlinnPhong(white, 10), 0.0, nothing, blue)
-    mat3 = Material(BlinnPhong(red, 100), 0.0, nothing, blue)
-    objs = [
-        Sphere(Vec3(-2, -1, -8), 1, mat1),
-        Sphere(Vec3(-1, 1, -8), 1, mat2),
-        Sphere(Vec3(0, -1, -8), 1, mat3),
-        Sphere(Vec3(1, 1, -8), 1, mat2),
-        Sphere(Vec3(2, -1, -8), 1, mat1),
-        Sphere(Vec3(0, -5001, 0), 5000, Material(Lambertian(), 0.0, nothing, white)) # ground
-    ]
-
-    lights = [PointLight(0.8, Vec3(0, 4, -8)),
-        PointLight(0.2, Vec3(0, 0, 0))]
-
-    Scene(bg, objs, lights)
-end
-
-function scene_5()
+function refract1()
     # Refraction scene 
     bg = black
     mat = Material(Lambertian(), 0.5, nothing, white, 0.5)
@@ -129,28 +76,18 @@ function scene_5()
     Scene(bg, objs, lights)
 end
 
-function scene_6()
+function scene_9()
     bg = black
+    objs = []
 
-    r = Material(BlinnPhong(white, 10), 0.0, nothing, red)
-    g = Material(BlinnPhong(white, 10), 0.0, nothing, green)
-    b = Material(BlinnPhong(white, 10), 0.0, nothing, blue)
-    refl = Material(Lambertian(), 0.6, nothing, white)
-
-    objs = [
-        #Sphere(Vec3(-10, 0, -1), 9.2, refl),
-        Sphere(Vec3(-1, -1.1, -3), 0.5, r),
-        Sphere(Vec3(-0.5, -1.0, -4), 0.5, g),
-        Sphere(Vec3(0, -0.9, -5), 0.5, b),
-        Sphere(Vec3(5, -1, -4), 4, refl),
-        #Sphere(Vec3( 10,  0.1 , -1), 9.2, refl),
-        Sphere(Vec3(0, -5001, 0), 5000, Material(Lambertian(), 0.5, nothing, white)) # floor
-    ]
-
-    lights = [PointLight(0.6, Vec3(1, 10, -4)),
-        PointLight(0.4, Vec3(0, 0, 0))]
+    push!(objs, Sphere(Vec3(0, -5001, 0), 5000, Material(Lambertian(), 0.2, nothing, RGB{Float32}(0.8, 0.8, 1.0))))
+    cube_mat = Material(Lambertian(), 0.0, Texture("data/1.png", false), white)
+    append!(objs, mesh_helper(cube_mesh(), cube_mat, 0.5, Vec3(-1, -1, -3)))
+    lights = [DirectionalLight(0.4, Vec3(0, 1, 0)),
+        DirectionalLight(0.8, Vec3(0.4, 0.4, 1))]
 
     Scene(bg, objs, lights)
+
 end
 
 
@@ -166,7 +103,7 @@ function mesh_helper(mesh, material, scale=1.0, translation=Vec3(0, 0, 0))
     create_triangles(mesh, material)
 end
 
-function scene_7()
+function bunny()
     bg = black
     objs = []
 
@@ -221,7 +158,7 @@ function wizard_hat()
     objs = []
 
     # add a wizard tower:
-    tower_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(128/255, 0, 128/255))
+    tower_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(128 / 255, 0, 128 / 255))
     tower = read_obj("data/wizard_hat.obj")
     append!(objs, mesh_helper(tower, tower_mat, 1.0, Vec3(0.2, 0, -5)))
 
@@ -230,42 +167,15 @@ function wizard_hat()
         PointLight(0.7, Vec3(10, 5, -8)),  # Light 2
         PointLight(0.6, Vec3(5, 10, -12)), # Light 3
         PointLight(0.4, Vec3(-5, 3, -15)), # Light 4
-        AreaLight(0.5, Vec3(-2, 10, 5), Vec3(0,0,0), Vec3(1,1,1))
+        AreaLight(0.5, Vec3(-2, 10, 5), Vec3(0, 0, 0), Vec3(1, 1, 1))
     ]
 
     Scene(bg, objs, lights)
 
 end
 
-scene_8 = scene_7
 
-function scene_9()
-    bg = black
 
-    objs = []
-
-    push!(objs, Sphere(Vec3(0, -5001, 0), 5000, Material(Lambertian(), 0.2, nothing, RGB{Float32}(0.8, 0.8, 1.0))))
-
-    # sphere_material = Material(Lambertian(), 0.0, Texture("data/earth.png", false), nothing)
-    # push!(objs, Sphere(Vec3(-1.25, 0, -6), 1, sphere_material))
-
-    # sphere_m = sphere_mesh(32, 16)
-    # scale = 1.0
-    # translation = Vec3(1.25, 0, -6)
-    # for i in 1:length(sphere_m.positions)
-    #     sphere_m.positions[i] = sphere_m.positions[i] * scale + translation
-    # end
-    # append!(objs, create_triangles(sphere_m, sphere_material))
-
-    cube_mat = Material(Lambertian(), 0.0, Texture("data/1.png", false), white)
-    append!(objs, mesh_helper(cube_mesh(), cube_mat, 0.5, Vec3(-1, -1, -3)))
-
-    lights = [DirectionalLight(0.4, Vec3(0, 1, 0)),
-        DirectionalLight(0.8, Vec3(0.4, 0.4, 1))]
-
-    Scene(bg, objs, lights)
-
-end
 
 function scene_10()
     # Loads the triangle OBJ mesh
@@ -278,7 +188,7 @@ function scene_10()
 end
 
 # Test refraction (Scene 3 duplicate with some modifications)
-function scene_11()
+function refract2()
     bg = black
 
     # Materials
@@ -323,31 +233,38 @@ function wizard_cat()
     append!(objs, mesh_helper(wizardcat_yellow, wizardcat_mat_yellow, 1.0, Vec3(-9, -3.5, -10.5)))
 
     # add wizardcat's orb (glass sphere)
-    sphere_mat = Material(BlinnPhong(RGB(0.835, 0.212, 0.0), 64), 0.0, nothing, RGB{Float32}(0.1, 0.3, 0.5), 0.6, 1.5)
-    append!(objs, mesh_helper(sphere_mesh(32, 16), sphere_mat, 1.0, Vec3(0.1, -1, -3)))
+    orb_mat = Material(BlinnPhong(RGB(0.835, 0.212, 0.0), 64), 0.0, nothing, RGB{Float32}(0.1, 0.3, 0.5), 0.6, 1.5)
+    #orb_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.1, 0.3, 0.5), 0.6, 1.5)
+    orb_obj = mesh_helper(sphere_mesh(32, 16), orb_mat, 1.0, Vec3(0.1, -1, -3))
+    append!(objs, orb_obj)
+
     lights = [
         AreaLight(1.5, Vec3(-0.5, -3, 0.5), Vec3(1, -3, 0), Vec3(0, 0, -1))
     ]
+    # camera = Cameras.PerspectiveCamera(
+    #     eye = Vec3(20, 4, 10),
+    #     view = Vec3(-20, -4, -15),
+    #     up = Vec3(0,1,0),
+    #     focal = 8.0,
+    #     300, 
+    #     300)
 
     Scene(bg, objs, lights)
 
 end
 
-cameras = [camera_1, camera_2, camera_3, camera_4, camera_5]
+cameras = [canonical, camera_2, camera_3, wizard_hat_camera, wizard_tower_camera]
 
 function get_camera(i, img_height, img_width)
     cameras[i](img_height, img_width)
 end
 
 
-scenes = [scene_1, scene_2, scene_3, scene_4, scene_5, scene_6, scene_7, 
-        scene_8, scene_9, scene_10, scene_11, wizard_tower, wizard_hat, wizard_cat]
+scenes = [refract1, bunny, refract2, wizard_tower, wizard_hat, wizard_cat]
 
 function get_scene(scene::String)
     scene_names = [
-        "scene_1", "scene_2", "scene_3", "scene_4", "refract1",
-        "scene_6", "bunny", "scene_8", "scene_9", "scene_10", "refract2",
-        "wizard_tower", "wizard_hat", "wizard_cat"
+        "refract1", "bunny", "refract2", "wizard_tower", "wizard_hat", "wizard_cat"
     ]
     i = findfirst(x -> x == scene, scene_names)
     return scenes[i]()
