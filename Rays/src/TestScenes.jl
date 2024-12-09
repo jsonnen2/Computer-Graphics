@@ -309,15 +309,24 @@ function wizard_cat()
     objs = []
 
     # add a wizardcat:
-    wizardcat_mat = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.6, 0.5, 0.5))
-    wizardcat = read_obj("data/wizardcat.obj")
-    append!(objs, mesh_helper(wizardcat, wizardcat_mat, 1.0, Vec3(0.2, -2, -6)))
+    wizardcat_mat_purple = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.5, 0, 0.5))
+    wizardcat_mat_red = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.5, 0, 0))
+    wizardcat_mat_green = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0, 0.5, 0))
+    wizardcat_mat_yellow = Material(Lambertian(), 0.0, nothing, RGB{Float32}(0.5, 0.5, 0))
+    wizardcat_purple = read_obj("data/wizardcat.obj")
+    wizardcat_red = read_obj("data/wizardcat.obj")
+    wizardcat_green = read_obj("data/wizardcat.obj")
+    wizardcat_yellow = read_obj("data/wizardcat.obj")
+    append!(objs, mesh_helper(wizardcat_purple, wizardcat_mat_purple, 1.0, Vec3(0, -2, -6)))
+    append!(objs, mesh_helper(wizardcat_red, wizardcat_mat_red, 1.0, Vec3(-3, -2.5, -7.5)))
+    append!(objs, mesh_helper(wizardcat_green, wizardcat_mat_green, 1.0, Vec3(-6, -3, -9)))
+    append!(objs, mesh_helper(wizardcat_yellow, wizardcat_mat_yellow, 1.0, Vec3(-9, -3.5, -10.5)))
 
     # add wizardcat's orb (glass sphere)
     sphere_mat = Material(BlinnPhong(RGB(0.835, 0.212, 0.0), 64), 0.0, nothing, RGB{Float32}(0.1, 0.3, 0.5), 0.6, 1.5)
     append!(objs, mesh_helper(sphere_mesh(32, 16), sphere_mat, 1.0, Vec3(0.1, -1, -3)))
     lights = [
-        AreaLight(1.5, Vec3(1, 3, -2), Vec3(1, -3, 0), Vec3(0, 0, 1))
+        AreaLight(1.5, Vec3(-0.5, -3, 0.5), Vec3(1, -3, 0), Vec3(0, 0, -1))
     ]
 
     Scene(bg, objs, lights)
